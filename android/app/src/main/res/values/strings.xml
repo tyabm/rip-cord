@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Rip-Cord</string>
+    <string name="tile_label">Rip-Cord</string>
+    <string name="tile_description">Pull Rip-Cord to interrupt a phone-checking urge</string>
+    <string name="widget_description">One-tap Rip-Cord activation</string>
+</resources>
