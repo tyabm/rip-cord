@@ -40,12 +40,6 @@ final summaryProvider = Provider<LogSummary>((ref) {
   return ref.watch(repositoryProvider).buildSummary();
 });
 
-final bonusUnlockStatusProvider = Provider<BonusUnlockStatus>((ref) {
-  ref.watch(dataVersionProvider);
-  ref.watch(appBootstrapProvider);
-  return ref.watch(repositoryProvider).bonusUnlockStatus();
-});
-
 void notifyDataChanged(WidgetRef ref) {
   ref.read(dataVersionProvider.notifier).state++;
 }
@@ -67,5 +61,3 @@ class ActiveSequence {
 }
 
 final activeSequenceProvider = StateProvider<ActiveSequence?>((ref) => null);
-
-final lastRewardProvider = StateProvider<ReinforcementResult?>((ref) => null);

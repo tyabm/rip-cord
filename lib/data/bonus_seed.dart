@@ -1,7 +1,8 @@
 import '../domain/models.dart';
 
-/// Special categories unlocked for 24h after a high points-in-24h threshold.
-/// IDs stable (`seed_bonus_*`). Aim: 15–30 second actions.
+/// Mindfulness, Creative, Writing, and Values prompts.
+/// IDs stay `seed_bonus_*` so existing libraries merge without duplicating edits.
+/// They are always in the rotation. Aim: 15–30 second actions.
 List<CompetingResponse> bonusCompetingResponses({int startSortOrder = 1000}) {
   final items = <({
     String id,
@@ -107,7 +108,6 @@ List<CompetingResponse> bonusCompetingResponses({int startSortOrder = 1000}) {
         enabled: true,
         sortOrder: startSortOrder + i,
         weight: 1,
-        requiresBonusUnlock: true,
       ),
   ];
 }

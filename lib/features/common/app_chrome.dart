@@ -51,8 +51,14 @@ Future<void> showAboutRipCordDialog(BuildContext context) {
               ),
               SizedBox(height: 16),
               Text(
-                'When an urge hits: interrupt → competing response → '
-                'reinforce the better choice. All data stays on this device.',
+                'When an urge hits: interrupt, do one short competing response, '
+                'then put the phone down. All data stays on this device.',
+                style: TextStyle(height: 1.4),
+              ),
+              SizedBox(height: 12),
+              Text(
+                'If you save a trusted person\'s number, it stays on this device. '
+                'Rip-Cord does not read your contacts or send messages for you.',
                 style: TextStyle(height: 1.4),
               ),
             ],

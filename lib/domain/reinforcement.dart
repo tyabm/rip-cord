@@ -1,12 +1,8 @@
-import 'dart:math';
-
 import 'models.dart';
 
-/// Pure reinforcement engine — easy to unit test.
+/// Quiet point and streak record. A completion awards base points only.
 class ReinforcementEngine {
-  ReinforcementEngine({Random? random}) : _random = random ?? Random();
-
-  final Random _random;
+  const ReinforcementEngine();
 
   ReinforcementResult complete({
     required AppSettings settings,
@@ -14,11 +10,6 @@ class ReinforcementEngine {
   }) {
     final moment = now ?? DateTime.now();
     final base = settings.basePoints;
-    var bonus = 0;
-    if (settings.variableRatioEnabled &&
-        _random.nextDouble() < settings.variableRatioChance) {
-      bonus = settings.variableRatioBonus;
-    }
 
     final withinWindow = settings.lastSuccessAt != null &&
         moment.difference(settings.lastSuccessAt!) <=
@@ -26,11 +17,10 @@ class ReinforcementEngine {
 
     final newStreak = withinWindow ? settings.currentStreak + 1 : 1;
     final best = newStreak > settings.bestStreak ? newStreak : settings.bestStreak;
-    final total = settings.currentPoints + base + bonus;
+    final total = settings.currentPoints + base;
 
     return ReinforcementResult(
       basePoints: base,
-      bonusPoints: bonus,
       newStreak: newStreak,
       bestStreak: best,
       totalPoints: total,
