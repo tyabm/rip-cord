@@ -1,9 +1,11 @@
 import '../domain/models.dart';
 import 'bonus_seed.dart';
 
-/// Bump when replacing the full built-in set for existing installs.
-/// v3: adds bonus (Mindfulness / Creative / Writing / Values) unlock prompts.
-const int currentResponseLibraryVersion = 3;
+/// Bump when the built-in library needs a migration on existing installs.
+/// v3: added Mindfulness / Creative / Writing / Values prompts behind an unlock.
+/// v4: those prompts are always in the rotation. Upgrade merges missing ids
+/// and keeps user edits (it does not replace the whole library).
+const int currentResponseLibraryVersion = 4;
 
 /// Built-in library (~100). IDs are stable (`seed_…`) for merge/upgrade.
 ///
@@ -645,7 +647,6 @@ List<CompetingResponse> defaultCompetingResponses() {
         enabled: true,
         sortOrder: i,
         weight: 1,
-        requiresBonusUnlock: false,
       ),
   ];
 

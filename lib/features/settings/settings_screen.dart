@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/seed.dart';
+import '../../domain/handoff.dart';
 import '../../domain/models.dart';
 import '../../providers/app_providers.dart';
 import '../common/app_chrome.dart';
@@ -26,7 +27,6 @@ class SettingsScreen extends ConsumerWidget {
         data: (_) {
           final settings = ref.watch(settingsProvider);
           final responses = ref.watch(responsesProvider);
-          final bonus = ref.watch(bonusUnlockStatusProvider);
           final repo = ref.read(repositoryProvider);
 
           Future<void> save(AppSettings next) async {
@@ -60,7 +60,7 @@ class SettingsScreen extends ConsumerWidget {
                 ),
               ),
               SwitchListTile(
-                title: const Text('Grayscale during sequence'),
+                title: const Text('Grayscale during practice'),
                 subtitle: const Text('Mild sensory quieting while you practice'),
                 value: settings.grayscaleDuringSequence,
                 onChanged: (v) =>
@@ -72,10 +72,169 @@ class SettingsScreen extends ConsumerWidget {
                 onChanged: (v) => save(settings.copyWith(ttsEnabled: v)),
               ),
               const SizedBox(height: 16),
-              _SectionTitle('Reinforcement'),
+              _SectionTitle('After a pull'),
+              Text(
+                'Choose one optional next step. Rip-Cord opens it, then leaves. '
+                'If you choose none, the app just closes.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+              ),
+              const SizedBox(height: 4),
+              RadioGroup<HandoffKind>(
+                groupValue: settings.handoffKind,
+                onChanged: (value) {
+                  if (value != null) {
+                    save(settings.copyWith(handoffKind: value));
+                  }
+                },
+                child: const Column(
+                  children: [
+                    RadioListTile<HandoffKind>(
+                      value: HandoffKind.none,
+                      contentPadding: EdgeInsets.zero,
+                      title: Text('None'),
+                      subtitle: Text('Close Rip-Cord'),
+                    ),
+                    RadioListTile<HandoffKind>(
+                      value: HandoffKind.walkTimer,
+                      contentPadding: EdgeInsets.zero,
+                      title: Text('Walk timer'),
+                      subtitle: Text('Hand a timer to the Clock app'),
+                    ),
+                    RadioListTile<HandoffKind>(
+                      value: HandoffKind.music,
+                      contentPadding: EdgeInsets.zero,
+                      title: Text('Music'),
+                      subtitle: Text('Open a playlist or link'),
+                    ),
+                    RadioListTile<HandoffKind>(
+                      value: HandoffKind.call,
+                      contentPadding: EdgeInsets.zero,
+                      title: Text('Call'),
+                      subtitle: Text('Open the dialer for your trusted person'),
+                    ),
+                  ],
+                ),
+              ),
+              if (settings.handoffKind == HandoffKind.walkTimer) ...[
+                Text(
+                  'Walk length: ${settings.walkTimerMinutes} min',
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+                Slider(
+                  value: settings.walkTimerMinutes.toDouble().clamp(5, 30),
+                  min: 5,
+                  max: 30,
+                  divisions: 25,
+                  label: '${settings.walkTimerMinutes} min',
+                  onChanged: (v) => save(
+                    settings.copyWith(walkTimerMinutes: v.round()),
+                  ),
+                ),
+              ],
+              if (settings.handoffKind == HandoffKind.music) ...[
+                _RememberedField(
+                  value: settings.musicUri ?? '',
+                  label: 'Playlist or music link',
+                  helper: musicLaunchUri(settings.musicUri) == null &&
+                          (settings.musicUri ?? '').isNotEmpty
+                      ? 'Use a full link, such as a Spotify or YouTube Music URL.'
+                      : 'Paste a link your phone can open. Rip-Cord does not play it itself.',
+                  keyboardType: TextInputType.url,
+                  onSave: (value) {
+                    final current = ref.read(repositoryProvider).settings;
+                    final trimmed = value.trim();
+                    return save(
+                      current.copyWith(
+                        musicUri: trimmed.isEmpty ? null : trimmed,
+                        clearMusicUri: trimmed.isEmpty,
+                      ),
+                    );
+                  },
+                ),
+              ],
+              if (settings.handoffKind == HandoffKind.call &&
+                  dialerUri(settings.trustedPersonPhone) == null)
+                Text(
+                  'Add a phone number under Trusted person. Until then, a pull just closes the app.',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                ),
+              const SizedBox(height: 16),
+              _SectionTitle('Urge drill'),
+              Text(
+                'Name the urge, do one short physical action, then leave. '
+                'Under a minute. No points.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+              ),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Use the urge drill as the default pull'),
+                subtitle: const Text(
+                  'The Rip-Cord button, Quick Settings tile, widget, and deep link open the drill. A prompt is still available on Home.',
+                ),
+                value: settings.drillIsDefaultPull,
+                onChanged: (v) =>
+                    save(settings.copyWith(drillIsDefaultPull: v)),
+              ),
+              const SizedBox(height: 8),
+              _SectionTitle('Trusted person'),
+              Text(
+                'Optional. Type a name and number yourself. Rip-Cord does not read your contacts.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+              ),
+              const SizedBox(height: 8),
+              _RememberedField(
+                value: settings.trustedPersonName ?? '',
+                label: 'Name',
+                keyboardType: TextInputType.name,
+                onSave: (value) {
+                  final current = ref.read(repositoryProvider).settings;
+                  final trimmed = value.trim();
+                  return save(
+                    current.copyWith(
+                      trustedPersonName: trimmed.isEmpty ? null : trimmed,
+                      clearTrustedPersonName: trimmed.isEmpty,
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 8),
+              _RememberedField(
+                value: settings.trustedPersonPhone ?? '',
+                label: 'Phone number',
+                helper:
+                    'Stays on this phone. A button during a pull opens your SMS app with a blank message. Rip-Cord never sends the text.',
+                keyboardType: TextInputType.phone,
+                onSave: (value) {
+                  final current = ref.read(repositoryProvider).settings;
+                  final trimmed = value.trim();
+                  return save(
+                    current.copyWith(
+                      trustedPersonPhone: trimmed.isEmpty ? null : trimmed,
+                      clearTrustedPersonPhone: trimmed.isEmpty,
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 16),
+              _SectionTitle('Private record'),
+              Text(
+                'Points and streak stay in Log. A pull does not celebrate them, and stopping does not reset the streak.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+              ),
               ListTile(
+                contentPadding: EdgeInsets.zero,
                 title: const Text('Base points'),
-                subtitle: Text('${settings.basePoints} per completion'),
+                subtitle: Text('${settings.basePoints} per completed prompt'),
                 trailing: SizedBox(
                   width: 120,
                   child: Row(
@@ -103,48 +262,11 @@ class SettingsScreen extends ConsumerWidget {
                   ),
                 ),
               ),
-              SwitchListTile(
-                title: const Text('Variable-ratio bonus'),
-                subtitle: Text(
-                  '${(settings.variableRatioChance * 100).round()}% chance of +${settings.variableRatioBonus}',
-                ),
-                value: settings.variableRatioEnabled,
-                onChanged: (v) =>
-                    save(settings.copyWith(variableRatioEnabled: v)),
-              ),
-              if (settings.variableRatioEnabled) ...[
-                Text('Bonus chance'),
-                Slider(
-                  value: settings.variableRatioChance,
-                  min: 0.05,
-                  max: 0.5,
-                  divisions: 9,
-                  label:
-                      '${(settings.variableRatioChance * 100).round()}%',
-                  onChanged: (v) =>
-                      save(settings.copyWith(variableRatioChance: v)),
-                ),
-                ListTile(
-                  title: const Text('Bonus points'),
-                  trailing: Text('${settings.variableRatioBonus}'),
-                  onTap: () async {
-                    final next = await _pickInt(
-                      context,
-                      title: 'Bonus points',
-                      value: settings.variableRatioBonus,
-                      min: 1,
-                      max: 100,
-                    );
-                    if (next != null) {
-                      await save(settings.copyWith(variableRatioBonus: next));
-                    }
-                  },
-                ),
-              ],
               ListTile(
+                contentPadding: EdgeInsets.zero,
                 title: const Text('Streak window (hours)'),
                 subtitle: Text(
-                  'Consecutive successes within ${settings.streakWindowHours}h keep the streak. Abort does not reset it.',
+                  'Successes within ${settings.streakWindowHours}h keep the streak.',
                 ),
                 trailing: Text('${settings.streakWindowHours}h'),
                 onTap: () async {
@@ -159,48 +281,6 @@ class SettingsScreen extends ConsumerWidget {
                     await save(settings.copyWith(streakWindowHours: next));
                   }
                 },
-              ),
-              const SizedBox(height: 16),
-              _SectionTitle('Bonus prompts (24h unlock)'),
-              Text(
-                'Earn many points in 24 hours to unlock Mindfulness, Creative, '
-                'Writing, and Values prompts for one day. They leave the rotation '
-                'when the window ends; hit the threshold again to restore them.',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-              ),
-              const SizedBox(height: 8),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: Icon(
-                  bonus.active ? Icons.auto_awesome : Icons.lock_outline,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-                title: Text(
-                  bonus.active
-                      ? 'Unlocked'
-                      : 'Locked — ${bonus.pointsLast24h} / ${bonus.threshold} pts (24h)',
-                ),
-                subtitle: Text(
-                  bonus.active && bonus.expiresAt != null
-                      ? 'Ends ${bonus.expiresAt!.toLocal()}'
-                      : 'High threshold by default; keep practicing to unlock.',
-                ),
-              ),
-              Text(
-                'Unlock threshold: ${settings.bonusUnlockThreshold} points / 24h',
-                style: Theme.of(context).textTheme.titleSmall,
-              ),
-              Slider(
-                value: settings.bonusUnlockThreshold.toDouble().clamp(50, 500),
-                min: 50,
-                max: 500,
-                divisions: 45,
-                label: '${settings.bonusUnlockThreshold}',
-                onChanged: (v) => save(
-                  settings.copyWith(bonusUnlockThreshold: v.round()),
-                ),
               ),
               const SizedBox(height: 16),
               _SectionTitle('Theme'),
@@ -276,7 +356,8 @@ class SettingsScreen extends ConsumerWidget {
               Text(
                 'Library: ${responses.length} prompts '
                 '(${responses.where((r) => r.enabled).length} enabled). '
-                'Each Rip-Cord pull picks one at random — not reshuffled only on open.',
+                'Mindfulness, Creative, Writing, and Values are always in the rotation. '
+                'Each pull picks one enabled prompt at random.',
                 style: Theme.of(context).textTheme.titleSmall,
               ),
               const SizedBox(height: 6),
@@ -415,7 +496,9 @@ class SettingsScreen extends ConsumerWidget {
                 leading: Icon(Icons.lock_outline),
                 title: Text('100% on-device'),
                 subtitle: Text(
-                  'No cloud accounts. No network calls for core features. Logs stay on this phone.',
+                  'No cloud accounts. No network calls for core features. Logs stay on this phone. '
+                  'A trusted person\'s name and number, if you type them, stay on this device. '
+                  'Rip-Cord does not read contacts, send messages, or track replies.',
                 ),
               ),
               FilledButton.tonal(
@@ -425,7 +508,7 @@ class SettingsScreen extends ConsumerWidget {
                     builder: (ctx) => AlertDialog(
                       title: const Text('Clear all data?'),
                       content: const Text(
-                        'This resets points, streak, log, and restores default responses.',
+                        'This resets the log, the private points and streak record, hand-off choices, the trusted person, and restores default responses.',
                       ),
                       actions: [
                         TextButton(
@@ -491,49 +574,22 @@ class SettingsScreen extends ConsumerWidget {
       ...groups.keys.where((k) => !preferred.contains(k)),
     ];
 
-    final bonusActive =
-        ref.read(repositoryProvider).settings.isBonusUnlockActive();
-
     final widgets = <Widget>[];
     for (final key in keys) {
-      final isBonusGroup = groups[key]!.any((r) => r.requiresBonusUnlock);
       widgets.add(
         Padding(
           padding: const EdgeInsets.only(top: 12, bottom: 4),
-          child: Row(
-            children: [
-              Text(
-                key,
-                style: theme.textTheme.titleSmall?.copyWith(
-                  color: theme.colorScheme.primary,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              if (isBonusGroup) ...[
-                const SizedBox(width: 8),
-                Icon(
-                  bonusActive ? Icons.auto_awesome : Icons.lock,
-                  size: 16,
-                  color: theme.colorScheme.outline,
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  bonusActive ? 'In rotation' : 'Needs unlock',
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: theme.colorScheme.outline,
-                  ),
-                ),
-              ],
-            ],
+          child: Text(
+            key,
+            style: theme.textTheme.titleSmall?.copyWith(
+              color: theme.colorScheme.primary,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ),
       );
       for (final r in groups[key]!) {
-        final subtitleParts = <String>[
-          if (r.requiresBonusUnlock) 'Bonus',
-          if (r.actionPrompt != null && r.actionPrompt!.isNotEmpty)
-            r.actionPrompt!,
-        ];
+        final action = r.actionPrompt;
         widgets.add(
           Card(
             margin: const EdgeInsets.only(bottom: 8),
@@ -543,22 +599,16 @@ class SettingsScreen extends ConsumerWidget {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
-              subtitle: subtitleParts.isEmpty
+              subtitle: action == null || action.isEmpty
                   ? null
                   : Text(
-                      subtitleParts.join(' · '),
+                      action,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
               leading: Icon(
-                r.requiresBonusUnlock && !bonusActive
-                    ? Icons.lock_outline
-                    : (r.enabled
-                        ? Icons.check_circle
-                        : Icons.circle_outlined),
-                color: r.enabled && (!r.requiresBonusUnlock || bonusActive)
-                    ? theme.colorScheme.primary
-                    : null,
+                r.enabled ? Icons.check_circle : Icons.circle_outlined,
+                color: r.enabled ? theme.colorScheme.primary : null,
               ),
               trailing: const Icon(Icons.edit_outlined),
               onTap: () => _editResponse(context, ref, r),
@@ -752,6 +802,80 @@ class SettingsScreen extends ConsumerWidget {
           },
         );
       },
+    );
+  }
+}
+
+class _RememberedField extends StatefulWidget {
+  const _RememberedField({
+    required this.value,
+    required this.label,
+    required this.onSave,
+    this.helper,
+    this.keyboardType,
+  });
+
+  final String value;
+  final String label;
+  final String? helper;
+  final TextInputType? keyboardType;
+  final Future<void> Function(String value) onSave;
+
+  @override
+  State<_RememberedField> createState() => _RememberedFieldState();
+}
+
+class _RememberedFieldState extends State<_RememberedField> {
+  late final TextEditingController _controller;
+  late final FocusNode _focus;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.value);
+    _focus = FocusNode()..addListener(_onFocus);
+  }
+
+  @override
+  void didUpdateWidget(covariant _RememberedField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_focus.hasFocus && widget.value != _controller.text) {
+      _controller.text = widget.value;
+    }
+  }
+
+  void _onFocus() {
+    if (!_focus.hasFocus) {
+      _commit();
+    }
+  }
+
+  Future<void> _commit() async {
+    if (_controller.text.trim() == widget.value.trim()) return;
+    await widget.onSave(_controller.text);
+  }
+
+  @override
+  void dispose() {
+    _focus.removeListener(_onFocus);
+    _focus.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: _controller,
+      focusNode: _focus,
+      keyboardType: widget.keyboardType,
+      textInputAction: TextInputAction.done,
+      onEditingComplete: _commit,
+      decoration: InputDecoration(
+        labelText: widget.label,
+        helperText: widget.helper,
+        helperMaxLines: 3,
+      ),
     );
   }
 }

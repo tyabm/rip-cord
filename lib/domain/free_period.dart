@@ -29,15 +29,8 @@ CompetingResponse? pickWeightedResponse(
   List<CompetingResponse> responses, {
   Random? random,
   String? excludeId,
-  /// When false, responses with [CompetingResponse.requiresBonusUnlock] are skipped.
-  bool includeBonusUnlock = true,
 }) {
-  var enabled = responses
-      .where(
-        (r) =>
-            r.enabled && (includeBonusUnlock || !r.requiresBonusUnlock),
-      )
-      .toList();
+  var enabled = responses.where((r) => r.enabled).toList();
   if (enabled.isEmpty) return null;
 
   // Avoid immediate repeat when there is at least one other option.

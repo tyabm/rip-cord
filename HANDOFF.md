@@ -1,7 +1,7 @@
 # Rip-Cord — Project Handoff
 
-**Last updated:** 2026-08-06  
-**Status:** MVP complete + post-MVP polish (incl. 24h bonus prompt unlock) — release APK sideloaded to Galaxy S24+ (SM-S926U)  
+**Last updated:** 2026-11-14  
+**Status:** MVP complete. The app is a short, finite interrupt: pull, one competing response (or a sub-minute urge drill), then leave. No bonus unlock, no variable-ratio reward, no return-to-Home celebration. Release version remains `1.0.0+2` (Play closed testing; do not upload from this change).  
 **Repo path:** `C:\Users\tyler\rip-cord`  
 **Package ID:** `com.ripcord.rip_cord`
 
@@ -12,9 +12,9 @@
 Rip-Cord is an **operant-conditioning habit interruption tool** for Android (primary target: Samsung Galaxy S24+ / One UI). When the user feels an urge to check their phone, they pull a one-tap **Rip-Cord** that:
 
 1. Interrupts the automatic behavior chain  
-2. Delivers a short **competing response** (reframe + optional physical action)  
-3. Awards **immediate reinforcement** (points, streak, celebration)  
-4. **Logs** the event locally for shaping longer non-use intervals  
+2. Delivers a short **competing response** (reframe + optional physical action), or a sub-minute **urge drill**  
+3. Optionally hands the user to one real-world step (Clock walk timer, a music link, or the dialer), then **leaves the app**  
+4. **Logs** the event locally. Points and streak stay a quiet record in Log — they are not celebrated  
 
 **Purpose (About dialog):** Establish good habits and break out of negative thinking patterns. **Pull the ripcord.**
 
@@ -61,7 +61,7 @@ Rip-Cord is an **operant-conditioning habit interruption tool** for Android (pri
 - [x] **100** stable-ID seeds (`seed_*`) in `lib/data/seed.dart`
 - [x] Categories: **Breathing**, **Grounding**, **Movement**, **Reframe**, **Action** (~20 each)
 - [x] Optional `category` field on responses; Settings groups by category
-- [x] **Library version** (`responseLibraryVersion`, current **2**) upgrades old installs stuck on the original 8 prompts
+- [x] **Library version** (`responseLibraryVersion`, current **4**) upgrades old installs. v4 merges the former bonus prompts into the normal rotation and keeps user edits
 - [x] `refreshBuiltInResponses()` / Settings **Restore / refresh built-in prompts** (keeps true customs; drops legacy first-run UUIDs)
 - [x] `mergeMissingDefaultResponses()` for incremental seed additions after version is current
 - [x] Settings shows library count: `N prompts (M enabled)`
@@ -76,12 +76,21 @@ Rip-Cord is an **operant-conditioning habit interruption tool** for Android (pri
 - [x] Patterns in `lib/domain/breath_pattern.dart`: box, paced 4/6, physiological sigh, 4-7-8, coherent, long exhale, gentle default
 - [x] `ChimeService` in `lib/services/chime_service.dart`
 
-#### Reinforcement engine
-- [x] Base points (configurable)
-- [x] Streak with rolling time window (default 24h); abort does **not** reset streak
-- [x] Optional variable-ratio bonus (default 20% chance of extra points)
-- [x] Celebration / reward screen (animation + haptics)
-- [x] Pure unit-tested logic in `lib/domain/reinforcement.dart`
+#### After a pull
+- [x] Calm **Done** screen, then the app leaves (`SystemNavigator.pop()`)
+- [x] Optional one hand-off chosen in Settings: Clock **walk timer** (`ACTION_SET_TIMER`, UI shown), a **music/playlist URI**, or the **dialer** for a typed number. If none is set, the app just closes
+- [x] **Exit** on the sequence, drill, and done screens
+- [x] Points and streak still update quietly for a completed prompt and stay in **Log**. Home does not show them. No variable-ratio bonus and no bonus-prompt unlock
+
+#### Urge drill
+- [x] Home offers a drill under a minute: name the urge (chips or one line), one physical action from a fixed list, existing countdown and haptics, then leave
+- [x] Awards no points and does not open a reward screen
+- [x] Optional Settings switch makes the drill the default pull (button, tile, widget, deep link). A prompt is still available on Home
+
+#### Trusted person
+- [x] One name and phone, typed in Settings. No `READ_CONTACTS`
+- [x] One-tap button on the sequence and done screens opens the SMS composer with **no** prefilled body (`sms:` URI, `SENDTO` query, no `SEND_SMS`)
+- [x] The number stays on the device (About, Data & privacy, privacy policy)
 
 #### Logging & summary
 - [x] Every activation logged (timestamp, outcome, duration, phrase, points, source)
@@ -90,7 +99,8 @@ Rip-Cord is an **operant-conditioning habit interruption tool** for Android (pri
 
 #### Settings & customization
 - [x] Competing-response library: add / edit / delete / enable / category
-- [x] Sequence duration, base points, variable-ratio controls, streak window
+- [x] Sequence duration, quiet base points, streak window
+- [x] Hand-off, urge-drill default, and trusted person
 - [x] Theme: system / light / dark / high-contrast
 - [x] TTS + grayscale toggles
 - [x] Clear-all data (resets to defaults + seed phrases)
@@ -101,7 +111,7 @@ Rip-Cord is an **operant-conditioning habit interruption tool** for Android (pri
 - [x] **About (`?`)** and **Exit (`X`)** on Home, Log, and Settings app bars
 - [x] Shared helper: `lib/features/common/app_chrome.dart`
 - [x] About copy: purpose + “Pull the ripcord.” + on-device privacy one-liner
-- [x] Exit: `SystemNavigator.pop()` (not shown on sequence/reward screens)
+- [x] Exit: `SystemNavigator.pop()` on Home, Log, Settings, sequence, drill, and the post-pull screen
 
 #### UI / platform quality
 - [x] Material 3, large touch targets, bottom nav (Home · Log · Settings)
@@ -112,7 +122,7 @@ Rip-Cord is an **operant-conditioning habit interruption tool** for Android (pri
 #### Persistence
 - [x] Settings: `SharedPreferences` (includes `responseLibraryVersion`, `lastResponseId`)
 - [x] Responses + events: JSON files under app documents directory
-- [x] Seed library of **100** default competing responses on first launch / library upgrade
+- [x] Seed library of **100** base prompts plus **12** always-available Mindfulness / Creative / Writing / Values prompts. v3→v4 merges missing ids and keeps edits
 
 ### 2.3 Project layout (high level)
 
@@ -120,19 +130,19 @@ Rip-Cord is an **operant-conditioning habit interruption tool** for Android (pri
 rip-cord/
   lib/
     main.dart, app.dart, router.dart
-    domain/          # models, reinforcement, free-period, breath_pattern
+    domain/          # models, reinforcement, handoff, urge drill, free-period, breath_pattern
     data/            # repository + seed (~100 prompts)
     providers/       # Riverpod
     features/
       common/        # About / Exit app chrome
       home/
       sequence/      # sequence + breath_guide
-      reward/, log/, settings/
+      done/, drill/, log/, settings/
     services/        # TTS, CSV export, chime
     theme/
   assets/sounds/     # breath_chime.wav
   android/           # TileService, Widget, MainActivity, manifests
-  test/              # reinforcement, free_period, seed, breath_pattern, deep-link
+  test/              # reinforcement, handoff, drill, library migration, settings migration
   README.md          # end-user setup, sideload, reinstall
   HANDOFF.md         # this file
 ```
@@ -158,7 +168,7 @@ rip-cord/
 | App chrome | About (?) and Exit (X) on main tabs |
 | Device | USB debugging + release APK installed on Galaxy S24+ |
 | Dependencies | Added `audioplayers` + chime asset |
-| Bonus unlock | High 24h point threshold unlocks Mindfulness/Creative/Writing/Values for 24h; re-earn to restore; library v3 |
+| Bonus unlock | Removed 2026-11-14. Those 12 prompts are always in the rotation (library v4). Old `app_settings_v1` keys are ignored |
 
 ### 2.6 Explicitly not in MVP (by design)
 
@@ -169,7 +179,7 @@ rip-cord/
 - Volume-key / side-button remapping  
 - iOS  
 - ML urge prediction  
-- Token shop / spend points for cosmetics (points accumulate only)  
+- Token shop, streak insurance, variable-ratio bonuses, and other engagement loops  
 - Rich charts beyond summary chips  
 
 ---
@@ -232,7 +242,9 @@ Abort does not break streak; only **streak window expiry** does.
 
 **Library selection:** Full library loads from disk on open (fast). Each Rip-Cord pull picks one **enabled** response at random (weighted), excluding the previous id when possible.
 
-**Library migration:** `currentResponseLibraryVersion` in `lib/data/seed.dart` (value **2**). On load, if device version is lower, `refreshBuiltInResponses()` runs.
+**Library migration:** `currentResponseLibraryVersion` in `lib/data/seed.dart` (value **4**). Versions below 3 still replace built-in rows and keep true customs. Version 3 and later merge missing ids only, so edits to former bonus prompts survive. `requiresBonusUnlock` in old `competing_responses.json` is ignored.
+
+**Settings migration:** `AppSettings.fromJson` ignores `variableRatioEnabled`, `variableRatioChance`, `variableRatioBonus`, `bonusUnlockThreshold`, and `bonusUnlockExpiresAt`, including a malformed expiry string. The next save does not write those keys.
 
 **Cold start:** Deep link / tile / widget all route into the same sequence screen. Measure on S24+ for ≤1.5 s target.
 
@@ -252,15 +264,15 @@ Prioritized as a suggested roadmap, not a commitment.
 | **Device Admin / app timers** | Temporary cooldown (optional, aggressive) |
 | **Volume / side key remapping** | Accessibility; Samsung constraints |
 
-### Phase 2.5 — Reinforcement & engagement
+### Phase 2.5 — Practice depth
+
+Points, streaks, shops, and insurance are out of scope. The app should stay a short instrument that hands the user back to real life.
 
 | Feature | Notes |
 |---------|--------|
-| **Token economy shop** | Spend points on themes / friction reductions |
 | **Schedules & shaping** | Free-period goals without ML |
 | **Custom audio packs** | User-recorded cues beyond TTS / chime |
 | **More guided pattern UIs** | e.g. grounding / movement visual pacers |
-| **Streak insurance / freezes** | Optional point cost |
 
 ### Phase 3 — Insights (still local-first)
 
@@ -308,11 +320,11 @@ Prioritized as a suggested roadmap, not a commitment.
 | Criterion | Status |
 |-----------|--------|
 | User can add QS tile and widget; activate in ≤2 taps | Implemented; installed on S24+ |
-| Completing sequence awards points and updates streak | Done |
-| All data remains on-device | Done |
+| Completing a prompt quietly records points and streak in Log, then leaves the app | Done |
+| All data remains on-device, including an optional trusted-person number | Done |
 | Works offline and after reboot | Expected; smoke-tested via sideload install |
 | Settings customize replacement text and sequence length | Done |
-| ~100 varied prompts with random selection | Done (library version 2) |
+| ~100 varied prompts, plus 12 always-available former bonus prompts, with random selection | Done (library version 4) |
 | Breathing prompts have timed visual + chime | Done |
 | About / Exit on main screens | Done |
 

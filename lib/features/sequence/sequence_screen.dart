@@ -9,6 +9,8 @@ import '../../domain/breath_pattern.dart';
 import '../../domain/models.dart';
 import '../../providers/app_providers.dart';
 import '../../services/tts_service.dart';
+import '../common/app_chrome.dart';
+import '../common/check_in_button.dart';
 import 'breath_guide.dart';
 
 class SequenceScreen extends ConsumerStatefulWidget {
@@ -102,16 +104,29 @@ class _SequenceScreenState extends ConsumerState<SequenceScreen> {
     HapticFeedback.mediumImpact();
 
     final repo = ref.read(repositoryProvider);
-    final result = await repo.completeActivation(
+    await repo.completeActivation(
       eventId: _eventId!,
       durationSec: _elapsed,
     );
-    ref.read(lastRewardProvider.notifier).state = result;
     ref.read(activeSequenceProvider.notifier).state = null;
     notifyDataChanged(ref);
 
     if (!mounted) return;
-    context.go('/reward');
+    context.go('/done');
+  }
+
+  Future<void> _exitApp() async {
+    if (_finishing) return;
+    setState(() => _finishing = true);
+    _timer?.cancel();
+    await ttsService.stop();
+    if (_eventId != null) {
+      final repo = ref.read(repositoryProvider);
+      await repo.abortActivation(eventId: _eventId!, durationSec: _elapsed);
+      ref.read(activeSequenceProvider.notifier).state = null;
+      notifyDataChanged(ref);
+    }
+    exitRipCordApp();
   }
 
   Future<void> _abort() async {
@@ -126,9 +141,6 @@ class _SequenceScreenState extends ConsumerState<SequenceScreen> {
     notifyDataChanged(ref);
 
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Logged as incomplete — no points awarded.')),
-    );
     context.go('/');
   }
 
@@ -288,10 +300,10 @@ class _SequenceScreenState extends ConsumerState<SequenceScreen> {
                     ),
                     child: const Text('I completed this'),
                   ),
-                  const SizedBox(height: 10),
+                  const TrustedCheckInButton(),
                   TextButton(
                     onPressed: _finishing ? null : _abort,
-                    child: const Text('Abort (no points)'),
+                    child: const Text('Stop'),
                   ),
                 ],
               ),
@@ -305,6 +317,13 @@ class _SequenceScreenState extends ConsumerState<SequenceScreen> {
       appBar: AppBar(
         title: const Text('Rip-Cord'),
         automaticallyImplyLeading: false,
+        actions: [
+          IconButton(
+            tooltip: 'Exit',
+            onPressed: _finishing ? null : _exitApp,
+            icon: const Icon(Icons.close),
+          ),
+        ],
       ),
       body: body,
     );

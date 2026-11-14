@@ -1,7 +1,7 @@
 # Rip-Cord
 
 Operant-conditioning habit interruption for Android (Material 3).  
-When an urge to check your phone hits, **pull the Rip-Cord** in under two seconds: interrupt → competing response → immediate points/streak reinforcement → local log.
+When an urge to check your phone hits, **pull the Rip-Cord**: interrupt, do one short competing response, then put the phone down. Points and streak stay a private record in Log.
 
 **Purpose:** Establish good habits and break out of negative thinking patterns. **Pull the ripcord.**
 
@@ -15,16 +15,21 @@ When an urge to check your phone hits, **pull the Rip-Cord** in under two second
   - Home-screen **1×1 widget**
   - Deep link: `ripcord://activate?source=tile|widget|fab`
 - **Competing response** (10–45s, configurable; prompts designed for ~15–30s)
-  - Built-in library of **~100** short prompts (Breathing, Grounding, Movement, Reframe, Action)
-  - **Bonus unlock:** earn a high number of points in 24h (default 150, configurable) to unlock **Mindfulness / Creative / Writing / Values** prompts for 24 hours; they leave the rotation when the window ends—earn the threshold again to restore
+  - Built-in library of **~100** short prompts plus **12** always-available Mindfulness, Creative, Writing, and Values prompts
   - Random pick each time you pull (not only on app open)
   - Editable library: add, edit, disable, custom categories
-  - Explicit **I completed this** / **Abort**
+  - Explicit **I completed this** / **Stop**, then the app leaves
   - Optional TTS and grayscale mode
   - **Breathing prompts:** expanding/shrinking circle guide + soft chime
-- **Reinforcement**
-  - Base points, streak (rolling window), optional variable-ratio bonus
-  - Abort does **not** reset streak (only window expiry does)
+- **After a pull**
+  - Optional hand-off set in Settings: a walk timer in the Clock app, a playlist/music link, or the dialer for one trusted person. Otherwise Rip-Cord just closes
+- **Urge drill**
+  - Name the urge, one physical action, under a minute, then leave. No points. Can be the default pull
+- **Trusted person**
+  - Name and number typed in Settings (no contacts permission). One tap opens a blank SMS composer. The number stays on the device
+- **Private record**
+  - Base points and streak (rolling window) live in Log
+  - Stopping does **not** reset streak (only window expiry does)
 - **Log**
   - Daily/weekly counts, success rate, longest free period, CSV export
 - **App chrome**

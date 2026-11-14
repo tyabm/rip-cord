@@ -5,10 +5,11 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
-import '../domain/bonus_unlock.dart';
 import '../domain/free_period.dart';
 import '../domain/models.dart';
 import '../domain/reinforcement.dart';
+import '../domain/urge_drill.dart';
+import 'library_merge.dart';
 import 'seed.dart';
 
 const _settingsKey = 'app_settings_v1';
@@ -20,7 +21,8 @@ class AppRepository {
     SharedPreferences? prefs,
     ReinforcementEngine? engine,
     Uuid? uuid,
-  })  : _engine = engine ?? ReinforcementEngine(),
+    this.documentsDirectory,
+  })  : _engine = engine ?? const ReinforcementEngine(),
         _uuid = uuid ?? const Uuid() {
     _prefsFuture = prefs != null
         ? Future.value(prefs)
@@ -29,7 +31,14 @@ class AppRepository {
 
   final ReinforcementEngine _engine;
   final Uuid _uuid;
+  final Directory? documentsDirectory;
   late final Future<SharedPreferences> _prefsFuture;
+
+  Future<Directory> _docs() async {
+    final override = documentsDirectory;
+    if (override != null) return override;
+    return getApplicationDocumentsDirectory();
+  }
 
   List<CompetingResponse> _responses = [];
   List<ActivationEvent> _events = [];
@@ -50,7 +59,7 @@ class AppRepository {
       );
     }
 
-    final dir = await getApplicationDocumentsDirectory();
+    final dir = await _docs();
     final responsesPath = File('${dir.path}/$_responsesFile');
     final eventsPath = File('${dir.path}/$_eventsFile');
 
@@ -66,12 +75,24 @@ class AppRepository {
       await _persistResponses();
     }
 
-    // One-shot upgrade: replace built-ins when library version is behind.
-    // Fixes installs stuck on the original 8 prompts; keeps user customs.
-    if (isFreshLibrary ||
-        _settings.responseLibraryVersion < currentResponseLibraryVersion) {
-      if (!isFreshLibrary) {
+    // Fresh installs already have the full library, including the former
+    // bonus prompts. Older installs:
+    // - below v3 were stuck on a short built-in set: replace seed rows, keep customs
+    // - v3 already has (and may have edited) those prompts: merge missing ids only
+    if (isFreshLibrary) {
+      _settings = _settings.copyWith(
+        responseLibraryVersion: currentResponseLibraryVersion,
+      );
+      await _persistSettings();
+    } else if (_settings.responseLibraryVersion < currentResponseLibraryVersion) {
+      if (_settings.responseLibraryVersion < 3) {
         await refreshBuiltInResponses();
+      } else {
+        _responses = mergeMissingResponses(
+          _responses,
+          defaultCompetingResponses(),
+        );
+        await _persistResponses();
       }
       _settings = _settings.copyWith(
         responseLibraryVersion: currentResponseLibraryVersion,
@@ -124,7 +145,7 @@ class AppRepository {
   }
 
   Future<void> _persistResponses() async {
-    final dir = await getApplicationDocumentsDirectory();
+    final dir = await _docs();
     final file = File('${dir.path}/$_responsesFile');
     await file.writeAsString(
       jsonEncode(_responses.map((r) => r.toJson()).toList()),
@@ -132,7 +153,7 @@ class AppRepository {
   }
 
   Future<void> _persistEvents() async {
-    final dir = await getApplicationDocumentsDirectory();
+    final dir = await _docs();
     final file = File('${dir.path}/$_eventsFile');
     await file.writeAsString(
       jsonEncode(_events.map((e) => e.toJson()).toList()),
@@ -175,20 +196,16 @@ class AppRepository {
   /// Appends built-in seed responses whose IDs are not already present.
   /// Returns how many were added. Preserves user edits and custom items.
   Future<int> mergeMissingDefaultResponses() async {
-    final existingIds = _responses.map((r) => r.id).toSet();
-    final defaults = defaultCompetingResponses();
-    final missing = defaults.where((d) => !existingIds.contains(d.id)).toList();
-    if (missing.isEmpty) return 0;
-
-    var order = _responses.isEmpty
-        ? 0
-        : _responses.map((r) => r.sortOrder).reduce((a, b) => a > b ? a : b) + 1;
-    for (final d in missing) {
-      _responses.add(d.copyWith(sortOrder: order++));
-    }
+    final before = _responses.length;
+    final merged = mergeMissingResponses(
+      _responses,
+      defaultCompetingResponses(),
+    );
+    if (merged.length == before) return 0;
+    _responses = merged;
     _responses.sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
     await _persistResponses();
-    return missing.length;
+    return merged.length - before;
   }
 
   /// Phrases from the original 8-item first-run seed (random UUIDs).
@@ -224,21 +241,6 @@ class AppRepository {
     return defaults.length;
   }
 
-  int pointsLast24Hours({DateTime? now}) =>
-      pointsInLast24Hours(_events, now: now);
-
-  bool get isBonusUnlockActive => _settings.isBonusUnlockActive();
-
-  BonusUnlockStatus bonusUnlockStatus({DateTime? now}) {
-    final n = now ?? DateTime.now();
-    return BonusUnlockStatus(
-      pointsLast24h: pointsLast24Hours(now: n),
-      threshold: _settings.bonusUnlockThreshold,
-      active: _settings.isBonusUnlockActive(n),
-      expiresAt: _settings.bonusUnlockExpiresAt,
-    );
-  }
-
   /// Starts a sequence: logs activation and returns event + selected response.
   Future<({ActivationEvent event, CompetingResponse response})> startActivation({
     required ActivationSource source,
@@ -246,7 +248,6 @@ class AppRepository {
     final response = pickWeightedResponse(
           _responses,
           excludeId: _settings.lastResponseId,
-          includeBonusUnlock: _settings.isBonusUnlockActive(),
         ) ??
         CompetingResponse(
           id: 'fallback',
@@ -291,7 +292,7 @@ class AppRepository {
         responseId: old.responseId,
         responsePhrase: old.responsePhrase,
         pointsAwarded: result.pointsAwarded,
-        bonusAwarded: result.bonusPoints,
+        bonusAwarded: 0,
         source: old.source,
       );
     }
@@ -304,22 +305,58 @@ class AppRepository {
       clearPendingSequenceId: true,
     );
 
-    // Grant 24h bonus categories if threshold met and not already active.
-    final pts24 = pointsInLast24Hours(_events, now: now);
-    final newExpiry = maybeGrantBonusUnlock(
-      settings: _settings,
-      pointsLast24h: pts24,
-      now: now,
-    );
-    var justUnlocked = false;
-    if (newExpiry != null) {
-      _settings = _settings.copyWith(bonusUnlockExpiresAt: newExpiry);
-      justUnlocked = true;
-    }
-
     await _persistEvents();
     await _persistSettings();
-    return result.copyWith(justUnlockedBonus: justUnlocked);
+    return result;
+  }
+
+  /// Logs an urge drill without points, streak, or a reward.
+  Future<ActivationEvent> startDrill({
+    required ActivationSource source,
+    required String urge,
+    required DrillAction action,
+  }) async {
+    final event = ActivationEvent(
+      id: _uuid.v4(),
+      startedAt: DateTime.now(),
+      outcome: ActivationOutcome.incomplete,
+      responseId: 'drill_${action.id}',
+      responsePhrase: drillLogPhrase(urge, action.label),
+      pointsAwarded: 0,
+      bonusAwarded: 0,
+      source: source,
+    );
+    _events.insert(0, event);
+    _settings = _settings.copyWith(pendingSequenceId: event.id);
+    await _persistEvents();
+    await _persistSettings();
+    return event;
+  }
+
+  Future<void> completeDrill({
+    required String eventId,
+    required int durationSec,
+  }) async {
+    final now = DateTime.now();
+    final idx = _events.indexWhere((e) => e.id == eventId);
+    if (idx >= 0) {
+      final old = _events[idx];
+      _events[idx] = ActivationEvent(
+        id: old.id,
+        startedAt: old.startedAt,
+        completedAt: now,
+        outcome: ActivationOutcome.completed,
+        durationSec: durationSec,
+        responseId: old.responseId,
+        responsePhrase: old.responsePhrase,
+        pointsAwarded: 0,
+        bonusAwarded: 0,
+        source: old.source,
+      );
+    }
+    _settings = _settings.copyWith(clearPendingSequenceId: true);
+    await _persistEvents();
+    await _persistSettings();
   }
 
   Future<void> abortActivation({

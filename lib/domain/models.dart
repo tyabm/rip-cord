@@ -4,8 +4,24 @@ enum ActivationSource { fab, tile, widget, deepLink }
 
 enum AppThemeMode { system, light, dark, highContrast, moreColors }
 
+/// What opens after a successful pull, before Rip-Cord leaves.
+/// [HandoffKind.none] just closes the app.
+enum HandoffKind { none, walkTimer, music, call }
+
 /// Default accent (calm green) when no custom color is stored.
 const int defaultSeedColorArgb = 0xFF1B6B4A;
+
+/// Keys written by builds that had a variable-ratio bonus and a 24h
+/// bonus-prompt unlock. [AppSettings.fromJson] ignores them so an existing
+/// `app_settings_v1` blob cannot crash on upgrade, and [AppSettings.toJson]
+/// does not write them back.
+const List<String> legacyAppSettingsKeys = [
+  'variableRatioEnabled',
+  'variableRatioChance',
+  'variableRatioBonus',
+  'bonusUnlockThreshold',
+  'bonusUnlockExpiresAt',
+];
 
 class CompetingResponse {
   CompetingResponse({
@@ -16,7 +32,6 @@ class CompetingResponse {
     this.enabled = true,
     this.sortOrder = 0,
     this.weight = 1,
-    this.requiresBonusUnlock = false,
   });
 
   final String id;
@@ -27,8 +42,6 @@ class CompetingResponse {
   final bool enabled;
   final int sortOrder;
   final int weight;
-  /// Only enters rotation while a bonus unlock window is active.
-  final bool requiresBonusUnlock;
 
   CompetingResponse copyWith({
     String? id,
@@ -40,7 +53,6 @@ class CompetingResponse {
     bool? enabled,
     int? sortOrder,
     int? weight,
-    bool? requiresBonusUnlock,
   }) {
     return CompetingResponse(
       id: id ?? this.id,
@@ -51,7 +63,6 @@ class CompetingResponse {
       enabled: enabled ?? this.enabled,
       sortOrder: sortOrder ?? this.sortOrder,
       weight: weight ?? this.weight,
-      requiresBonusUnlock: requiresBonusUnlock ?? this.requiresBonusUnlock,
     );
   }
 
@@ -63,7 +74,6 @@ class CompetingResponse {
         'enabled': enabled,
         'sortOrder': sortOrder,
         'weight': weight,
-        'requiresBonusUnlock': requiresBonusUnlock,
       };
 
   factory CompetingResponse.fromJson(Map<String, dynamic> json) {
@@ -75,8 +85,6 @@ class CompetingResponse {
       enabled: json['enabled'] as bool? ?? true,
       sortOrder: json['sortOrder'] as int? ?? 0,
       weight: json['weight'] as int? ?? 1,
-      requiresBonusUnlock: json['requiresBonusUnlock'] as bool? ??
-          (json['id'] as String?)?.startsWith('seed_bonus_') == true,
     );
   }
 }
@@ -103,6 +111,7 @@ class ActivationEvent {
   final String? responseId;
   final String? responsePhrase;
   final int pointsAwarded;
+  /// Kept so older logs still load. New completions store 0.
   final int bonusAwarded;
   final ActivationSource source;
 
@@ -120,21 +129,27 @@ class ActivationEvent {
       };
 
   factory ActivationEvent.fromJson(Map<String, dynamic> json) {
+    final outcomeName = json['outcome'];
+    final sourceName = json['source'];
     return ActivationEvent(
       id: json['id'] as String,
       startedAt: DateTime.parse(json['startedAt'] as String),
       completedAt: json['completedAt'] != null
-          ? DateTime.parse(json['completedAt'] as String)
+          ? DateTime.tryParse(json['completedAt'] as String)
           : null,
-      outcome: ActivationOutcome.values.byName(json['outcome'] as String),
+      outcome: outcomeName is String
+          ? (ActivationOutcome.values.asNameMap()[outcomeName] ??
+              ActivationOutcome.incomplete)
+          : ActivationOutcome.incomplete,
       durationSec: json['durationSec'] as int?,
       responseId: json['responseId'] as String?,
       responsePhrase: json['responsePhrase'] as String?,
       pointsAwarded: json['pointsAwarded'] as int? ?? 0,
       bonusAwarded: json['bonusAwarded'] as int? ?? 0,
-      source: ActivationSource.values.byName(
-        (json['source'] as String?) ?? ActivationSource.fab.name,
-      ),
+      source: sourceName is String
+          ? (ActivationSource.values.asNameMap()[sourceName] ??
+              ActivationSource.fab)
+          : ActivationSource.fab,
     );
   }
 }
@@ -143,9 +158,6 @@ class AppSettings {
   AppSettings({
     this.sequenceDurationSec = 25,
     this.basePoints = 10,
-    this.variableRatioEnabled = true,
-    this.variableRatioChance = 0.2,
-    this.variableRatioBonus = 15,
     this.streakWindowHours = 24,
     this.themeMode = AppThemeMode.system,
     this.grayscaleDuringSequence = false,
@@ -157,16 +169,17 @@ class AppSettings {
     this.pendingSequenceId,
     this.responseLibraryVersion = 0,
     this.lastResponseId,
-    this.bonusUnlockThreshold = 150,
-    this.bonusUnlockExpiresAt,
     this.customSeedColor = defaultSeedColorArgb,
+    this.handoffKind = HandoffKind.none,
+    this.walkTimerMinutes = 10,
+    this.musicUri,
+    this.trustedPersonName,
+    this.trustedPersonPhone,
+    this.drillIsDefaultPull = false,
   });
 
   final int sequenceDurationSec;
   final int basePoints;
-  final bool variableRatioEnabled;
-  final double variableRatioChance;
-  final int variableRatioBonus;
   final int streakWindowHours;
   final AppThemeMode themeMode;
   final bool grayscaleDuringSequence;
@@ -181,25 +194,24 @@ class AppSettings {
   final int responseLibraryVersion;
   /// Last selected response id — used to reduce immediate repeats.
   final String? lastResponseId;
-  /// Points earned in rolling 24h needed to unlock bonus categories.
-  final int bonusUnlockThreshold;
-  /// When set and in the future, bonus prompts are in rotation.
-  final DateTime? bonusUnlockExpiresAt;
   /// ARGB seed for **MC (More Colors)** theme mode.
   final int customSeedColor;
-
-  bool isBonusUnlockActive([DateTime? now]) {
-    final n = now ?? DateTime.now();
-    final exp = bonusUnlockExpiresAt;
-    return exp != null && exp.isAfter(n);
-  }
+  /// Optional real-world step launched when a pull finishes.
+  final HandoffKind handoffKind;
+  /// Length handed to the system Clock app when [handoffKind] is a walk.
+  final int walkTimerMinutes;
+  /// Playlist or music link opened when [handoffKind] is music.
+  final String? musicUri;
+  /// Typed by the user. Never read from the contacts database.
+  final String? trustedPersonName;
+  /// Typed by the user. Stays on this device.
+  final String? trustedPersonPhone;
+  /// When true, the Rip-Cord button and external entry points open the urge drill.
+  final bool drillIsDefaultPull;
 
   AppSettings copyWith({
     int? sequenceDurationSec,
     int? basePoints,
-    bool? variableRatioEnabled,
-    double? variableRatioChance,
-    int? variableRatioBonus,
     int? streakWindowHours,
     AppThemeMode? themeMode,
     bool? grayscaleDuringSequence,
@@ -214,17 +226,20 @@ class AppSettings {
     int? responseLibraryVersion,
     String? lastResponseId,
     bool clearLastResponseId = false,
-    int? bonusUnlockThreshold,
-    DateTime? bonusUnlockExpiresAt,
-    bool clearBonusUnlockExpiresAt = false,
     int? customSeedColor,
+    HandoffKind? handoffKind,
+    int? walkTimerMinutes,
+    String? musicUri,
+    bool clearMusicUri = false,
+    String? trustedPersonName,
+    bool clearTrustedPersonName = false,
+    String? trustedPersonPhone,
+    bool clearTrustedPersonPhone = false,
+    bool? drillIsDefaultPull,
   }) {
     return AppSettings(
       sequenceDurationSec: sequenceDurationSec ?? this.sequenceDurationSec,
       basePoints: basePoints ?? this.basePoints,
-      variableRatioEnabled: variableRatioEnabled ?? this.variableRatioEnabled,
-      variableRatioChance: variableRatioChance ?? this.variableRatioChance,
-      variableRatioBonus: variableRatioBonus ?? this.variableRatioBonus,
       streakWindowHours: streakWindowHours ?? this.streakWindowHours,
       themeMode: themeMode ?? this.themeMode,
       grayscaleDuringSequence:
@@ -243,20 +258,23 @@ class AppSettings {
       lastResponseId: clearLastResponseId
           ? null
           : (lastResponseId ?? this.lastResponseId),
-      bonusUnlockThreshold: bonusUnlockThreshold ?? this.bonusUnlockThreshold,
-      bonusUnlockExpiresAt: clearBonusUnlockExpiresAt
-          ? null
-          : (bonusUnlockExpiresAt ?? this.bonusUnlockExpiresAt),
       customSeedColor: customSeedColor ?? this.customSeedColor,
+      handoffKind: handoffKind ?? this.handoffKind,
+      walkTimerMinutes: walkTimerMinutes ?? this.walkTimerMinutes,
+      musicUri: clearMusicUri ? null : (musicUri ?? this.musicUri),
+      trustedPersonName: clearTrustedPersonName
+          ? null
+          : (trustedPersonName ?? this.trustedPersonName),
+      trustedPersonPhone: clearTrustedPersonPhone
+          ? null
+          : (trustedPersonPhone ?? this.trustedPersonPhone),
+      drillIsDefaultPull: drillIsDefaultPull ?? this.drillIsDefaultPull,
     );
   }
 
   Map<String, dynamic> toJson() => {
         'sequenceDurationSec': sequenceDurationSec,
         'basePoints': basePoints,
-        'variableRatioEnabled': variableRatioEnabled,
-        'variableRatioChance': variableRatioChance,
-        'variableRatioBonus': variableRatioBonus,
         'streakWindowHours': streakWindowHours,
         'themeMode': themeMode.name,
         'grayscaleDuringSequence': grayscaleDuringSequence,
@@ -268,40 +286,41 @@ class AppSettings {
         'pendingSequenceId': pendingSequenceId,
         'responseLibraryVersion': responseLibraryVersion,
         'lastResponseId': lastResponseId,
-        'bonusUnlockThreshold': bonusUnlockThreshold,
-        'bonusUnlockExpiresAt': bonusUnlockExpiresAt?.toIso8601String(),
         'customSeedColor': customSeedColor,
+        'handoffKind': handoffKind.name,
+        'walkTimerMinutes': walkTimerMinutes,
+        'musicUri': musicUri,
+        'trustedPersonName': trustedPersonName,
+        'trustedPersonPhone': trustedPersonPhone,
+        'drillIsDefaultPull': drillIsDefaultPull,
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> json) {
+    // Legacy bonus / variable-ratio keys are intentionally unread.
     return AppSettings(
-      sequenceDurationSec: json['sequenceDurationSec'] as int? ?? 25,
-      basePoints: json['basePoints'] as int? ?? 10,
-      variableRatioEnabled: json['variableRatioEnabled'] as bool? ?? true,
-      variableRatioChance:
-          (json['variableRatioChance'] as num?)?.toDouble() ?? 0.2,
-      variableRatioBonus: json['variableRatioBonus'] as int? ?? 15,
-      streakWindowHours: json['streakWindowHours'] as int? ?? 24,
-      themeMode: AppThemeMode.values.byName(
-        (json['themeMode'] as String?) ?? AppThemeMode.system.name,
-      ),
+      sequenceDurationSec:
+          _optInt(json['sequenceDurationSec'], 25).clamp(10, 45),
+      basePoints: _optInt(json['basePoints'], 10).clamp(1, 999),
+      streakWindowHours: _optInt(json['streakWindowHours'], 24).clamp(1, 168),
+      themeMode: _optTheme(json['themeMode']),
       grayscaleDuringSequence:
-          json['grayscaleDuringSequence'] as bool? ?? false,
-      ttsEnabled: json['ttsEnabled'] as bool? ?? false,
-      currentPoints: json['currentPoints'] as int? ?? 0,
-      currentStreak: json['currentStreak'] as int? ?? 0,
-      bestStreak: json['bestStreak'] as int? ?? 0,
-      lastSuccessAt: json['lastSuccessAt'] != null
-          ? DateTime.parse(json['lastSuccessAt'] as String)
-          : null,
-      pendingSequenceId: json['pendingSequenceId'] as String?,
-      responseLibraryVersion: json['responseLibraryVersion'] as int? ?? 0,
-      lastResponseId: json['lastResponseId'] as String?,
-      bonusUnlockThreshold: json['bonusUnlockThreshold'] as int? ?? 150,
-      bonusUnlockExpiresAt: json['bonusUnlockExpiresAt'] != null
-          ? DateTime.parse(json['bonusUnlockExpiresAt'] as String)
-          : null,
-      customSeedColor: json['customSeedColor'] as int? ?? defaultSeedColorArgb,
+          _optBool(json['grayscaleDuringSequence'], fallback: false),
+      ttsEnabled: _optBool(json['ttsEnabled'], fallback: false),
+      currentPoints: _optInt(json['currentPoints'], 0),
+      currentStreak: _optInt(json['currentStreak'], 0),
+      bestStreak: _optInt(json['bestStreak'], 0),
+      lastSuccessAt: _optDate(json['lastSuccessAt']),
+      pendingSequenceId: _optString(json['pendingSequenceId']),
+      responseLibraryVersion: _optInt(json['responseLibraryVersion'], 0),
+      lastResponseId: _optString(json['lastResponseId']),
+      customSeedColor: _optInt(json['customSeedColor'], defaultSeedColorArgb),
+      handoffKind: _optHandoff(json['handoffKind']),
+      walkTimerMinutes: _optInt(json['walkTimerMinutes'], 10).clamp(1, 180),
+      musicUri: _optString(json['musicUri']),
+      trustedPersonName: _optString(json['trustedPersonName']),
+      trustedPersonPhone: _optString(json['trustedPersonPhone']),
+      drillIsDefaultPull:
+          _optBool(json['drillIsDefaultPull'], fallback: false),
     );
   }
 }
@@ -309,52 +328,17 @@ class AppSettings {
 class ReinforcementResult {
   const ReinforcementResult({
     required this.basePoints,
-    required this.bonusPoints,
     required this.newStreak,
     required this.bestStreak,
     required this.totalPoints,
-    this.justUnlockedBonus = false,
   });
 
   final int basePoints;
-  final int bonusPoints;
   final int newStreak;
   final int bestStreak;
   final int totalPoints;
-  /// True when this completion newly opened the 24h bonus-prompt window.
-  final bool justUnlockedBonus;
 
-  int get pointsAwarded => basePoints + bonusPoints;
-  bool get hadBonus => bonusPoints > 0;
-
-  ReinforcementResult copyWith({bool? justUnlockedBonus}) {
-    return ReinforcementResult(
-      basePoints: basePoints,
-      bonusPoints: bonusPoints,
-      newStreak: newStreak,
-      bestStreak: bestStreak,
-      totalPoints: totalPoints,
-      justUnlockedBonus: justUnlockedBonus ?? this.justUnlockedBonus,
-    );
-  }
-}
-
-/// Snapshot for Home / Settings bonus unlock UI.
-class BonusUnlockStatus {
-  const BonusUnlockStatus({
-    required this.pointsLast24h,
-    required this.threshold,
-    required this.active,
-    this.expiresAt,
-  });
-
-  final int pointsLast24h;
-  final int threshold;
-  final bool active;
-  final DateTime? expiresAt;
-
-  int get pointsTowardUnlock =>
-      pointsLast24h > threshold ? threshold : pointsLast24h;
+  int get pointsAwarded => basePoints;
 }
 
 class LogSummary {
@@ -382,4 +366,36 @@ class LogSummary {
       todayUses == 0 ? 0 : todaySuccesses / todayUses;
 
   double get weekSuccessRate => weekUses == 0 ? 0 : weekSuccesses / weekUses;
+}
+
+int _optInt(Object? value, int fallback) {
+  if (value is int) return value;
+  if (value is num) return value.round();
+  return fallback;
+}
+
+bool _optBool(Object? value, {required bool fallback}) {
+  if (value is bool) return value;
+  return fallback;
+}
+
+String? _optString(Object? value) {
+  if (value is! String) return null;
+  final trimmed = value.trim();
+  return trimmed.isEmpty ? null : trimmed;
+}
+
+DateTime? _optDate(Object? value) {
+  if (value is! String || value.isEmpty) return null;
+  return DateTime.tryParse(value);
+}
+
+AppThemeMode _optTheme(Object? value) {
+  if (value is! String) return AppThemeMode.system;
+  return AppThemeMode.values.asNameMap()[value] ?? AppThemeMode.system;
+}
+
+HandoffKind _optHandoff(Object? value) {
+  if (value is! String) return HandoffKind.none;
+  return HandoffKind.values.asNameMap()[value] ?? HandoffKind.none;
 }

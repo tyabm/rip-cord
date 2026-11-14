@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import 'domain/models.dart';
+import 'features/done/done_screen.dart';
+import 'features/drill/drill_screen.dart';
 import 'features/home/home_shell.dart';
 import 'features/log/log_screen.dart';
-import 'features/reward/reward_screen.dart';
+import 'features/sequence/activation_entry.dart';
 import 'features/sequence/sequence_screen.dart';
 import 'features/settings/settings_screen.dart';
 
@@ -53,21 +55,36 @@ GoRouter createRouter({String? initialLocation}) {
         path: '/activate',
         name: 'activate',
         builder: (context, state) {
-          final sourceName = state.uri.queryParameters['source'] ?? 'fab';
-          final source = ActivationSource.values.firstWhere(
-            (s) => s.name == sourceName,
-            orElse: () => ActivationSource.deepLink,
-          );
-          return SequenceScreen(source: source);
+          return ActivationEntry(source: _sourceFrom(state));
         },
       ),
       GoRoute(
-        path: '/reward',
-        name: 'reward',
-        builder: (context, state) => const RewardScreen(),
+        path: '/prompt',
+        name: 'prompt',
+        builder: (context, state) {
+          return SequenceScreen(source: _sourceFrom(state));
+        },
+      ),
+      GoRoute(
+        path: '/drill',
+        name: 'drill',
+        builder: (context, state) {
+          return DrillScreen(source: _sourceFrom(state));
+        },
+      ),
+      GoRoute(
+        path: '/done',
+        name: 'done',
+        builder: (context, state) => const DoneScreen(),
       ),
     ],
   );
+}
+
+ActivationSource _sourceFrom(GoRouterState state) {
+  final sourceName = state.uri.queryParameters['source'] ?? 'fab';
+  return ActivationSource.values.asNameMap()[sourceName] ??
+      ActivationSource.deepLink;
 }
 
 /// Parse Android deep link / intent into a router location.
