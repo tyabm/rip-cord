@@ -1,7 +1,7 @@
 name: rip_cord
 description: Operant-conditioning habit interruption tool — pull the Rip-Cord to interrupt phone-checking urges.
 publish_to: "none"
-version: 1.0.1+3
+version: 1.0.2+4
 
 environment:
   sdk: ^3.12.2
