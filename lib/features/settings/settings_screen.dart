@@ -6,6 +6,7 @@ import '../../data/seed.dart';
 import '../../domain/handoff.dart';
 import '../../domain/models.dart';
 import '../../providers/app_providers.dart';
+import '../../services/expectation_nudge.dart';
 import '../common/app_chrome.dart';
 import 'color_wheel.dart';
 
@@ -46,8 +47,8 @@ class SettingsScreen extends ConsumerWidget {
                 'Prompts are written to finish in about 15–30 seconds. '
                 'Set the timer in that range so the action matches the clock.',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
               Slider(
                 value: settings.sequenceDurationSec.toDouble(),
@@ -55,13 +56,14 @@ class SettingsScreen extends ConsumerWidget {
                 max: 45,
                 divisions: 35,
                 label: '${settings.sequenceDurationSec}s',
-                onChanged: (v) => save(
-                  settings.copyWith(sequenceDurationSec: v.round()),
-                ),
+                onChanged: (v) =>
+                    save(settings.copyWith(sequenceDurationSec: v.round())),
               ),
               SwitchListTile(
                 title: const Text('Grayscale during practice'),
-                subtitle: const Text('Mild sensory quieting while you practice'),
+                subtitle: const Text(
+                  'Mild sensory quieting while you practice',
+                ),
                 value: settings.grayscaleDuringSequence,
                 onChanged: (v) =>
                     save(settings.copyWith(grayscaleDuringSequence: v)),
@@ -77,8 +79,8 @@ class SettingsScreen extends ConsumerWidget {
                 'Choose one optional next step. Rip-Cord opens it, then leaves. '
                 'If you choose none, the app just closes.',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
               const SizedBox(height: 4),
               RadioGroup<HandoffKind>(
@@ -128,16 +130,16 @@ class SettingsScreen extends ConsumerWidget {
                   max: 30,
                   divisions: 25,
                   label: '${settings.walkTimerMinutes} min',
-                  onChanged: (v) => save(
-                    settings.copyWith(walkTimerMinutes: v.round()),
-                  ),
+                  onChanged: (v) =>
+                      save(settings.copyWith(walkTimerMinutes: v.round())),
                 ),
               ],
               if (settings.handoffKind == HandoffKind.music) ...[
                 _RememberedField(
                   value: settings.musicUri ?? '',
                   label: 'Playlist or music link',
-                  helper: musicLaunchUri(settings.musicUri) == null &&
+                  helper:
+                      musicLaunchUri(settings.musicUri) == null &&
                           (settings.musicUri ?? '').isNotEmpty
                       ? 'Use a full link, such as a Spotify or YouTube Music URL.'
                       : 'Paste a link your phone can open. Rip-Cord does not play it itself.',
@@ -159,8 +161,8 @@ class SettingsScreen extends ConsumerWidget {
                 Text(
                   'Add a phone number under Trusted person. Until then, a pull just closes the app.',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
               const SizedBox(height: 16),
               _SectionTitle('Urge drill'),
@@ -168,8 +170,8 @@ class SettingsScreen extends ConsumerWidget {
                 'Name the urge, do one short physical action, then leave. '
                 'Under a minute. No points.',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
@@ -186,8 +188,8 @@ class SettingsScreen extends ConsumerWidget {
               Text(
                 'Optional. Type a name and number yourself. Rip-Cord does not read your contacts.',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
               const SizedBox(height: 8),
               _RememberedField(
@@ -224,12 +226,123 @@ class SettingsScreen extends ConsumerWidget {
                 },
               ),
               const SizedBox(height: 16),
+              _SectionTitle('Expectation check'),
+              Text(
+                'See if it was worth it. At the start of a pull, one tap notes '
+                'what you were hoping the habit would get you. Later you can '
+                'rate whether giving in has delivered that, using ratings you '
+                'recorded on this phone.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Ask what you were hoping for'),
+                subtitle: const Text(
+                  'One question when a pull starts. You can skip it.',
+                ),
+                value: settings.expectationCheckEnabled,
+                onChanged: (value) async {
+                  final current = ref.read(repositoryProvider).settings;
+                  await save(
+                    current.copyWith(
+                      expectationCheckEnabled: value,
+                      expectationNudgeEnabled: value
+                          ? current.expectationNudgeEnabled
+                          : false,
+                    ),
+                  );
+                  if (!value) await expectationNudge.cancelAll();
+                },
+              ),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Remind me about 2 hours later'),
+                subtitle: const Text(
+                  'One local notification per pull, so you can recall the urge and rate it. Off unless you turn this on. It is not repeated, and it does not use the network.',
+                ),
+                value:
+                    settings.expectationCheckEnabled &&
+                    settings.expectationNudgeEnabled,
+                onChanged: !settings.expectationCheckEnabled
+                    ? null
+                    : (value) async {
+                        final current = ref.read(repositoryProvider).settings;
+                        if (!value) {
+                          await save(
+                            current.copyWith(expectationNudgeEnabled: false),
+                          );
+                          await expectationNudge.cancelAll();
+                          return;
+                        }
+                        final granted = await expectationNudge
+                            .requestPermission();
+                        if (!granted) {
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Notifications are off for Rip-Cord, so the reminder stays off.',
+                                ),
+                              ),
+                            );
+                          }
+                          return;
+                        }
+                        final latest = ref.read(repositoryProvider).settings;
+                        await save(
+                          latest.copyWith(expectationNudgeEnabled: true),
+                        );
+                      },
+              ),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton(
+                  onPressed: () async {
+                    final ok = await showDialog<bool>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Text('Clear expectation history?'),
+                        content: const Text(
+                          'This deletes what you hoped for and how you rated it. Your pull log stays.',
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx, false),
+                            child: const Text('Cancel'),
+                          ),
+                          FilledButton(
+                            onPressed: () => Navigator.pop(ctx, true),
+                            child: const Text('Clear'),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (ok != true || !context.mounted) return;
+                    await repo.clearExpectationHistory();
+                    ref.read(openExpectationCheckIdProvider.notifier).state =
+                        null;
+                    await expectationNudge.cancelAll();
+                    notifyDataChanged(ref);
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Expectation history cleared.'),
+                        ),
+                      );
+                    }
+                  },
+                  child: const Text('Clear expectation history'),
+                ),
+              ),
+              const SizedBox(height: 8),
               _SectionTitle('Private record'),
               Text(
                 'Points and streak stay in Log. A pull does not celebrate them, and stopping does not reset the streak.',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
               ListTile(
                 contentPadding: EdgeInsets.zero,
@@ -243,10 +356,10 @@ class SettingsScreen extends ConsumerWidget {
                         onPressed: settings.basePoints <= 1
                             ? null
                             : () => save(
-                                  settings.copyWith(
-                                    basePoints: settings.basePoints - 1,
-                                  ),
+                                settings.copyWith(
+                                  basePoints: settings.basePoints - 1,
                                 ),
+                              ),
                         icon: const Icon(Icons.remove_circle_outline),
                       ),
                       Text('${settings.basePoints}'),
@@ -327,11 +440,11 @@ class SettingsScreen extends ConsumerWidget {
                   settings.themeMode == AppThemeMode.light
                       ? 'Pick a color for Light mode. Pastels are darkened so text and buttons stay readable.'
                       : settings.themeMode == AppThemeMode.dark
-                          ? 'Pick a color for Dark mode. Deep tones are lightened so text and buttons stay readable.'
-                          : 'Pick a color. It is adjusted automatically so text and buttons stay visible in light and dark mode.',
+                      ? 'Pick a color for Dark mode. Deep tones are lightened so text and buttons stay readable.'
+                      : 'Pick a color. It is adjusted automatically so text and buttons stay visible in light and dark mode.',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
                 const SizedBox(height: 12),
                 BasicColorWheel(
@@ -364,8 +477,8 @@ class SettingsScreen extends ConsumerWidget {
               Text(
                 competingResponseDesignTip,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
               const SizedBox(height: 8),
               ..._groupedResponseTiles(context, ref, responses),
@@ -460,8 +573,9 @@ class SettingsScreen extends ConsumerWidget {
               const SizedBox(height: 8),
               FilledButton.tonalIcon(
                 onPressed: () async {
-                  const channel =
-                      MethodChannel('com.ripcord.rip_cord/activation');
+                  const channel = MethodChannel(
+                    'com.ripcord.rip_cord/activation',
+                  );
                   try {
                     final opened = await channel.invokeMethod<bool>(
                       'openSideKeySettings',
@@ -497,6 +611,7 @@ class SettingsScreen extends ConsumerWidget {
                 title: Text('100% on-device'),
                 subtitle: Text(
                   'No cloud accounts. No network calls for core features. Logs stay on this phone. '
+                  'Expectation notes, if you use them, stay on this phone too. '
                   'A trusted person\'s name and number, if you type them, stay on this device. '
                   'Rip-Cord does not read contacts, send messages, or track replies.',
                 ),
@@ -508,7 +623,7 @@ class SettingsScreen extends ConsumerWidget {
                     builder: (ctx) => AlertDialog(
                       title: const Text('Clear all data?'),
                       content: const Text(
-                        'This resets the log, the private points and streak record, hand-off choices, the trusted person, and restores default responses.',
+                        'This resets the log, the private points and streak record, expectation ratings, hand-off choices, the trusted person, and restores default responses.',
                       ),
                       actions: [
                         TextButton(
@@ -524,6 +639,9 @@ class SettingsScreen extends ConsumerWidget {
                   );
                   if (ok == true) {
                     await repo.clearAll();
+                    ref.read(openExpectationCheckIdProvider.notifier).state =
+                        null;
+                    await expectationNudge.cancelAll();
                     notifyDataChanged(ref);
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
@@ -601,11 +719,7 @@ class SettingsScreen extends ConsumerWidget {
               ),
               subtitle: action == null || action.isEmpty
                   ? null
-                  : Text(
-                      action,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                  : Text(action, maxLines: 2, overflow: TextOverflow.ellipsis),
               leading: Icon(
                 r.enabled ? Icons.check_circle : Icons.circle_outlined,
                 color: r.enabled ? theme.colorScheme.primary : null,
@@ -627,10 +741,10 @@ class SettingsScreen extends ConsumerWidget {
     bool isNew = false,
   }) async {
     final phraseCtrl = TextEditingController(text: response.phrase);
-    final actionCtrl =
-        TextEditingController(text: response.actionPrompt ?? '');
-    final categoryCtrl =
-        TextEditingController(text: response.category ?? (isNew ? 'Custom' : ''));
+    final actionCtrl = TextEditingController(text: response.actionPrompt ?? '');
+    final categoryCtrl = TextEditingController(
+      text: response.category ?? (isNew ? 'Custom' : ''),
+    );
     var enabled = response.enabled;
 
     final saved = await showModalBottomSheet<bool>(
@@ -660,8 +774,8 @@ class SettingsScreen extends ConsumerWidget {
                     Text(
                       'Keep it short: aim for 15–30 seconds total (thought + action).',
                       style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
-                            color: Theme.of(ctx).colorScheme.onSurfaceVariant,
-                          ),
+                        color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                      ),
                     ),
                     const SizedBox(height: 12),
                     TextField(
@@ -779,7 +893,10 @@ class SettingsScreen extends ConsumerWidget {
                         : () => setD(() => current--),
                     icon: const Icon(Icons.remove),
                   ),
-                  Text('$current', style: Theme.of(ctx).textTheme.headlineSmall),
+                  Text(
+                    '$current',
+                    style: Theme.of(ctx).textTheme.headlineSmall,
+                  ),
                   IconButton(
                     onPressed: current >= max
                         ? null
@@ -891,9 +1008,9 @@ class _SectionTitle extends StatelessWidget {
       child: Text(
         text,
         style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              color: Theme.of(context).colorScheme.primary,
-              fontWeight: FontWeight.w700,
-            ),
+          color: Theme.of(context).colorScheme.primary,
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }

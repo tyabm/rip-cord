@@ -12,5 +12,6 @@ void main() {
       '/activate?source=widget',
     );
     expect(locationFromUri(null), isNull);
+    expect(locationFromUri(Uri.parse('ripcord://rate')), '/');
   });
 }

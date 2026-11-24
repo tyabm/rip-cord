@@ -37,6 +37,7 @@ class CompetingResponse {
   final String id;
   final String phrase;
   final String? actionPrompt;
+
   /// Optional group label (e.g. "Breathing", "Grounding"). Custom entries may omit it.
   final String? category;
   final bool enabled;
@@ -57,8 +58,9 @@ class CompetingResponse {
     return CompetingResponse(
       id: id ?? this.id,
       phrase: phrase ?? this.phrase,
-      actionPrompt:
-          clearActionPrompt ? null : (actionPrompt ?? this.actionPrompt),
+      actionPrompt: clearActionPrompt
+          ? null
+          : (actionPrompt ?? this.actionPrompt),
       category: clearCategory ? null : (category ?? this.category),
       enabled: enabled ?? this.enabled,
       sortOrder: sortOrder ?? this.sortOrder,
@@ -67,14 +69,14 @@ class CompetingResponse {
   }
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'phrase': phrase,
-        'actionPrompt': actionPrompt,
-        'category': category,
-        'enabled': enabled,
-        'sortOrder': sortOrder,
-        'weight': weight,
-      };
+    'id': id,
+    'phrase': phrase,
+    'actionPrompt': actionPrompt,
+    'category': category,
+    'enabled': enabled,
+    'sortOrder': sortOrder,
+    'weight': weight,
+  };
 
   factory CompetingResponse.fromJson(Map<String, dynamic> json) {
     return CompetingResponse(
@@ -111,22 +113,23 @@ class ActivationEvent {
   final String? responseId;
   final String? responsePhrase;
   final int pointsAwarded;
+
   /// Kept so older logs still load. New completions store 0.
   final int bonusAwarded;
   final ActivationSource source;
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'startedAt': startedAt.toIso8601String(),
-        'completedAt': completedAt?.toIso8601String(),
-        'outcome': outcome.name,
-        'durationSec': durationSec,
-        'responseId': responseId,
-        'responsePhrase': responsePhrase,
-        'pointsAwarded': pointsAwarded,
-        'bonusAwarded': bonusAwarded,
-        'source': source.name,
-      };
+    'id': id,
+    'startedAt': startedAt.toIso8601String(),
+    'completedAt': completedAt?.toIso8601String(),
+    'outcome': outcome.name,
+    'durationSec': durationSec,
+    'responseId': responseId,
+    'responsePhrase': responsePhrase,
+    'pointsAwarded': pointsAwarded,
+    'bonusAwarded': bonusAwarded,
+    'source': source.name,
+  };
 
   factory ActivationEvent.fromJson(Map<String, dynamic> json) {
     final outcomeName = json['outcome'];
@@ -139,7 +142,7 @@ class ActivationEvent {
           : null,
       outcome: outcomeName is String
           ? (ActivationOutcome.values.asNameMap()[outcomeName] ??
-              ActivationOutcome.incomplete)
+                ActivationOutcome.incomplete)
           : ActivationOutcome.incomplete,
       durationSec: json['durationSec'] as int?,
       responseId: json['responseId'] as String?,
@@ -148,7 +151,7 @@ class ActivationEvent {
       bonusAwarded: json['bonusAwarded'] as int? ?? 0,
       source: sourceName is String
           ? (ActivationSource.values.asNameMap()[sourceName] ??
-              ActivationSource.fab)
+                ActivationSource.fab)
           : ActivationSource.fab,
     );
   }
@@ -176,6 +179,8 @@ class AppSettings {
     this.trustedPersonName,
     this.trustedPersonPhone,
     this.drillIsDefaultPull = false,
+    this.expectationCheckEnabled = true,
+    this.expectationNudgeEnabled = false,
   });
 
   final int sequenceDurationSec;
@@ -188,26 +193,42 @@ class AppSettings {
   final int currentStreak;
   final int bestStreak;
   final DateTime? lastSuccessAt;
+
   /// If set, a sequence was interrupted by process death.
   final String? pendingSequenceId;
+
   /// Bumped when built-in prompt library is upgraded on device.
   final int responseLibraryVersion;
+
   /// Last selected response id — used to reduce immediate repeats.
   final String? lastResponseId;
+
   /// ARGB seed for **MC (More Colors)** theme mode.
   final int customSeedColor;
+
   /// Optional real-world step launched when a pull finishes.
   final HandoffKind handoffKind;
+
   /// Length handed to the system Clock app when [handoffKind] is a walk.
   final int walkTimerMinutes;
+
   /// Playlist or music link opened when [handoffKind] is music.
   final String? musicUri;
+
   /// Typed by the user. Never read from the contacts database.
   final String? trustedPersonName;
+
   /// Typed by the user. Stays on this device.
   final String? trustedPersonPhone;
+
   /// When true, the Rip-Cord button and external entry points open the urge drill.
   final bool drillIsDefaultPull;
+
+  /// One-tap question at the start of a pull. On until the user turns it off.
+  final bool expectationCheckEnabled;
+
+  /// Local reminder about two hours after a pull. Off unless the user opts in.
+  final bool expectationNudgeEnabled;
 
   AppSettings copyWith({
     int? sequenceDurationSec,
@@ -236,6 +257,8 @@ class AppSettings {
     String? trustedPersonPhone,
     bool clearTrustedPersonPhone = false,
     bool? drillIsDefaultPull,
+    bool? expectationCheckEnabled,
+    bool? expectationNudgeEnabled,
   }) {
     return AppSettings(
       sequenceDurationSec: sequenceDurationSec ?? this.sequenceDurationSec,
@@ -248,8 +271,9 @@ class AppSettings {
       currentPoints: currentPoints ?? this.currentPoints,
       currentStreak: currentStreak ?? this.currentStreak,
       bestStreak: bestStreak ?? this.bestStreak,
-      lastSuccessAt:
-          clearLastSuccessAt ? null : (lastSuccessAt ?? this.lastSuccessAt),
+      lastSuccessAt: clearLastSuccessAt
+          ? null
+          : (lastSuccessAt ?? this.lastSuccessAt),
       pendingSequenceId: clearPendingSequenceId
           ? null
           : (pendingSequenceId ?? this.pendingSequenceId),
@@ -269,42 +293,52 @@ class AppSettings {
           ? null
           : (trustedPersonPhone ?? this.trustedPersonPhone),
       drillIsDefaultPull: drillIsDefaultPull ?? this.drillIsDefaultPull,
+      expectationCheckEnabled:
+          expectationCheckEnabled ?? this.expectationCheckEnabled,
+      expectationNudgeEnabled:
+          expectationNudgeEnabled ?? this.expectationNudgeEnabled,
     );
   }
 
   Map<String, dynamic> toJson() => {
-        'sequenceDurationSec': sequenceDurationSec,
-        'basePoints': basePoints,
-        'streakWindowHours': streakWindowHours,
-        'themeMode': themeMode.name,
-        'grayscaleDuringSequence': grayscaleDuringSequence,
-        'ttsEnabled': ttsEnabled,
-        'currentPoints': currentPoints,
-        'currentStreak': currentStreak,
-        'bestStreak': bestStreak,
-        'lastSuccessAt': lastSuccessAt?.toIso8601String(),
-        'pendingSequenceId': pendingSequenceId,
-        'responseLibraryVersion': responseLibraryVersion,
-        'lastResponseId': lastResponseId,
-        'customSeedColor': customSeedColor,
-        'handoffKind': handoffKind.name,
-        'walkTimerMinutes': walkTimerMinutes,
-        'musicUri': musicUri,
-        'trustedPersonName': trustedPersonName,
-        'trustedPersonPhone': trustedPersonPhone,
-        'drillIsDefaultPull': drillIsDefaultPull,
-      };
+    'sequenceDurationSec': sequenceDurationSec,
+    'basePoints': basePoints,
+    'streakWindowHours': streakWindowHours,
+    'themeMode': themeMode.name,
+    'grayscaleDuringSequence': grayscaleDuringSequence,
+    'ttsEnabled': ttsEnabled,
+    'currentPoints': currentPoints,
+    'currentStreak': currentStreak,
+    'bestStreak': bestStreak,
+    'lastSuccessAt': lastSuccessAt?.toIso8601String(),
+    'pendingSequenceId': pendingSequenceId,
+    'responseLibraryVersion': responseLibraryVersion,
+    'lastResponseId': lastResponseId,
+    'customSeedColor': customSeedColor,
+    'handoffKind': handoffKind.name,
+    'walkTimerMinutes': walkTimerMinutes,
+    'musicUri': musicUri,
+    'trustedPersonName': trustedPersonName,
+    'trustedPersonPhone': trustedPersonPhone,
+    'drillIsDefaultPull': drillIsDefaultPull,
+    'expectationCheckEnabled': expectationCheckEnabled,
+    'expectationNudgeEnabled': expectationNudgeEnabled,
+  };
 
   factory AppSettings.fromJson(Map<String, dynamic> json) {
     // Legacy bonus / variable-ratio keys are intentionally unread.
     return AppSettings(
-      sequenceDurationSec:
-          _optInt(json['sequenceDurationSec'], 25).clamp(10, 45),
+      sequenceDurationSec: _optInt(
+        json['sequenceDurationSec'],
+        25,
+      ).clamp(10, 45),
       basePoints: _optInt(json['basePoints'], 10).clamp(1, 999),
       streakWindowHours: _optInt(json['streakWindowHours'], 24).clamp(1, 168),
       themeMode: _optTheme(json['themeMode']),
-      grayscaleDuringSequence:
-          _optBool(json['grayscaleDuringSequence'], fallback: false),
+      grayscaleDuringSequence: _optBool(
+        json['grayscaleDuringSequence'],
+        fallback: false,
+      ),
       ttsEnabled: _optBool(json['ttsEnabled'], fallback: false),
       currentPoints: _optInt(json['currentPoints'], 0),
       currentStreak: _optInt(json['currentStreak'], 0),
@@ -319,8 +353,15 @@ class AppSettings {
       musicUri: _optString(json['musicUri']),
       trustedPersonName: _optString(json['trustedPersonName']),
       trustedPersonPhone: _optString(json['trustedPersonPhone']),
-      drillIsDefaultPull:
-          _optBool(json['drillIsDefaultPull'], fallback: false),
+      drillIsDefaultPull: _optBool(json['drillIsDefaultPull'], fallback: false),
+      expectationCheckEnabled: _optBool(
+        json['expectationCheckEnabled'],
+        fallback: true,
+      ),
+      expectationNudgeEnabled: _optBool(
+        json['expectationNudgeEnabled'],
+        fallback: false,
+      ),
     );
   }
 }

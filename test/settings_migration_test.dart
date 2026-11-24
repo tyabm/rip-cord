@@ -30,11 +30,15 @@ void main() {
     expect(settings.drillIsDefaultPull, isFalse);
     expect(settings.walkTimerMinutes, 10);
     expect(settings.trustedPersonPhone, isNull);
+    expect(settings.expectationCheckEnabled, isTrue);
+    expect(settings.expectationNudgeEnabled, isFalse);
 
     final stored = settings.toJson();
     for (final key in legacyAppSettingsKeys) {
       expect(stored.containsKey(key), isFalse, reason: key);
     }
+    expect(stored['expectationCheckEnabled'], isTrue);
+    expect(stored['expectationNudgeEnabled'], isFalse);
   });
 
   test('unknown handoff and theme names fall back safely', () {
@@ -55,6 +59,26 @@ void main() {
     expect(settings.trustedPersonName, 'Sam');
     expect(settings.trustedPersonPhone, '555');
     expect(settings.musicUri, 'https://example.com/pl');
+    expect(settings.expectationCheckEnabled, isTrue);
+    expect(settings.expectationNudgeEnabled, isFalse);
+  });
+
+  test('expectation toggles round-trip and stay distinct from legacy keys', () {
+    final settings = AppSettings.fromJson({
+      'expectationCheckEnabled': false,
+      'expectationNudgeEnabled': true,
+      'variableRatioEnabled': true,
+    });
+
+    expect(settings.expectationCheckEnabled, isFalse);
+    expect(settings.expectationNudgeEnabled, isTrue);
+
+    final stored = settings.toJson();
+    expect(stored['expectationCheckEnabled'], isFalse);
+    expect(stored['expectationNudgeEnabled'], isTrue);
+    for (final key in legacyAppSettingsKeys) {
+      expect(stored.containsKey(key), isFalse, reason: key);
+    }
   });
 
   test('former bonus flag on a response is ignored', () {

@@ -59,6 +59,10 @@ class _DrillScreenState extends ConsumerState<DrillScreen> {
       urge: urge,
       action: action,
     );
+    final checkId = ref.read(openExpectationCheckIdProvider);
+    if (checkId != null) {
+      await repo.attachExpectationToEvent(checkId: checkId, eventId: event.id);
+    }
     notifyDataChanged(ref);
     if (!mounted) return;
 
@@ -138,36 +142,52 @@ class _DrillScreenState extends ConsumerState<DrillScreen> {
       ),
       body: switch (_phase) {
         _DrillPhase.name => _NameStep(
-            controller: _urgeCtrl,
-            chip: _chip,
-            onChip: (value) => setState(() => _chip = value),
-            onChanged: () => setState(() {}),
-            canContinue: _urge != null,
-            onContinue: () => setState(() => _phase = _DrillPhase.choose),
-          ),
+          controller: _urgeCtrl,
+          chip: _chip,
+          onChip: (value) => setState(() => _chip = value),
+          onChanged: () => setState(() {}),
+          canContinue: _urge != null,
+          onContinue: () => setState(() => _phase = _DrillPhase.choose),
+        ),
         _DrillPhase.choose => _ChooseStep(
-            selected: _action,
-            onSelected: (action) => setState(() => _action = action),
-            onBack: () => setState(() => _phase = _DrillPhase.name),
-            onStart: _action == null ? null : _beginPractice,
-          ),
+          selected: _action,
+          onSelected: (action) => setState(() => _action = action),
+          onBack: () => setState(() => _phase = _DrillPhase.name),
+          onStart: _action == null ? null : _beginPractice,
+        ),
         _DrillPhase.practice => _PracticeStep(
-            urge: _urge ?? '',
-            action: _action!,
-            elapsed: _elapsed,
-            finishing: _finishing,
-            onStop: _stop,
-          ),
+          urge: _urge ?? '',
+          action: _action!,
+          elapsed: _elapsed,
+          finishing: _finishing,
+          onStop: _stop,
+        ),
       },
     );
 
     if (!settings.grayscaleDuringSequence) return content;
     return ColorFiltered(
       colorFilter: const ColorFilter.matrix(<double>[
-        0.2126, 0.7152, 0.0722, 0, 0,
-        0.2126, 0.7152, 0.0722, 0, 0,
-        0.2126, 0.7152, 0.0722, 0, 0,
-        0, 0, 0, 1, 0,
+        0.2126,
+        0.7152,
+        0.0722,
+        0,
+        0,
+        0.2126,
+        0.7152,
+        0.0722,
+        0,
+        0,
+        0.2126,
+        0.7152,
+        0.0722,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
       ]),
       child: content,
     );
@@ -353,7 +373,10 @@ class _PracticeStep extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final remaining = (drillPracticeSeconds - elapsed).clamp(0, drillPracticeSeconds);
+    final remaining = (drillPracticeSeconds - elapsed).clamp(
+      0,
+      drillPracticeSeconds,
+    );
     final progress = (elapsed / drillPracticeSeconds).clamp(0.0, 1.0);
 
     return Column(

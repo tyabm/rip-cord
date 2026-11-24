@@ -7,10 +7,12 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rip_cord/data/app_repository.dart';
+import 'package:rip_cord/domain/expectation.dart';
 import 'package:rip_cord/domain/models.dart';
 import 'package:rip_cord/domain/urge_drill.dart';
 import 'package:rip_cord/features/done/done_screen.dart';
 import 'package:rip_cord/features/drill/drill_screen.dart';
+import 'package:rip_cord/features/expectation/pull_flow.dart';
 import 'package:rip_cord/features/settings/settings_screen.dart';
 import 'package:rip_cord/providers/app_providers.dart';
 import 'package:rip_cord/theme/app_theme.dart';
@@ -44,7 +46,9 @@ void main() {
     await _pump(tester, const Size(400, 1180), const SettingsScreen(), repo);
     expect(find.text('After a pull'), findsOneWidget);
     final top = tester.getTopLeft(find.text('After a pull')).dy;
-    final scrollable = tester.state<ScrollableState>(find.byType(Scrollable).first);
+    final scrollable = tester.state<ScrollableState>(
+      find.byType(Scrollable).first,
+    );
     scrollable.position.jumpTo(scrollable.position.pixels + top - 4);
     await tester.pump();
     expect(find.text('Urge drill'), findsOneWidget);
@@ -103,6 +107,110 @@ void main() {
     await _save(tester, 'post-pull');
     await tester.pumpWidget(const SizedBox.shrink());
   });
+
+  testWidgets('expectation prompt', (tester) async {
+    await _pump(
+      tester,
+      const Size(400, 860),
+      const PullFlow(source: ActivationSource.fab, kind: PullKind.prompt),
+      repo,
+    );
+    await _settle(tester);
+    expect(
+      find.text('What were you hoping this would get you?'),
+      findsOneWidget,
+    );
+    expect(find.text('Relief'), findsOneWidget);
+    expect(find.text('Skip'), findsOneWidget);
+    await _save(tester, 'expectation-prompt');
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('expectation mirror', (tester) async {
+    await tester.runAsync(() async {
+      for (final score in [2, 2, 2, 2, 2, 3]) {
+        final check = await repo.recordExpectation(ExpectationKind.relief);
+        await repo.rateExpectation(id: check.id, rating: score);
+      }
+    });
+    await _pump(
+      tester,
+      const Size(400, 860),
+      const PullFlow(source: ActivationSource.fab, kind: PullKind.prompt),
+      repo,
+    );
+    await _settle(tester);
+    final relief = tester.widget<ButtonStyleButton>(
+      find
+          .ancestor(
+            of: find.text('Relief'),
+            matching: find.byWidgetPredicate(
+              (widget) => widget is ButtonStyleButton,
+            ),
+          )
+          .first,
+    );
+    await tester.runAsync(() async {
+      relief.onPressed?.call();
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+    });
+    await tester.pump();
+    expect(find.textContaining('you rated it'), findsOneWidget);
+    await _save(tester, 'expectation-mirror');
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('outcome rating at the next pull', (tester) async {
+    await tester.runAsync(() => repo.recordExpectation(ExpectationKind.relief));
+    await _pump(
+      tester,
+      const Size(400, 860),
+      const PullFlow(source: ActivationSource.fab, kind: PullKind.prompt),
+      repo,
+    );
+    await _settle(tester);
+    expect(
+      find.textContaining('Last time you expected relief'),
+      findsOneWidget,
+    );
+    expect(find.text('Skip'), findsOneWidget);
+    await _save(tester, 'outcome-rating');
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('closing screen rating', (tester) async {
+    await tester.runAsync(() => repo.recordExpectation(ExpectationKind.relief));
+    await _pump(tester, const Size(400, 900), const DoneScreen(), repo);
+    await _settle(tester);
+    expect(find.text('Done'), findsOneWidget);
+    expect(find.textContaining('did it deliver'), findsOneWidget);
+    await _save(tester, 'post-pull-rating');
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('settings expectation section', (tester) async {
+    await _pump(tester, const Size(400, 900), const SettingsScreen(), repo);
+    final vertical = find.byWidgetPredicate(
+      (widget) =>
+          widget is Scrollable && widget.axisDirection == AxisDirection.down,
+    );
+    await tester.scrollUntilVisible(
+      find.text('Remind me about 2 hours later'),
+      220,
+      scrollable: vertical,
+    );
+    expect(find.text('Ask what you were hoping for'), findsOneWidget);
+    expect(find.text('Remind me about 2 hours later'), findsOneWidget);
+    await _save(tester, 'settings-expectation');
+  });
+}
+
+Future<void> _settle(WidgetTester tester) async {
+  await tester.pump();
+  await tester.runAsync(
+    () => Future<void>.delayed(const Duration(milliseconds: 100)),
+  );
+  await tester.pump();
 }
 
 Future<void> _loadFonts() async {
@@ -112,9 +220,15 @@ Future<void> _loadFonts() async {
     '/usr/share/fonts/truetype/macos/Inter-SemiBold.ttf',
     '/usr/share/fonts/truetype/macos/Inter-Bold.ttf',
   ];
-  final icons = File(
-    '${Platform.environment['HOME']}/sdk/flutter/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf',
-  );
+  final iconCandidates = [
+    File(
+      '${Platform.environment['HOME']}/sdk/flutter/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf',
+    ),
+    File(
+      '/tmp/flutter-sdk/flutter/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf',
+    ),
+  ];
+  final icons = iconCandidates.where((file) => file.existsSync()).firstOrNull;
   if (!File(faces.first).existsSync()) return;
 
   final text = FontLoader(_fontFamily);
@@ -126,12 +240,11 @@ Future<void> _loadFonts() async {
   }
   await text.load();
 
-  if (!icons.existsSync()) return;
+  if (icons == null) return;
   final iconBytes = icons.readAsBytesSync();
-  final iconLoader = FontLoader('MaterialIcons')
-    ..addFont(
-      Future.value(ByteData.sublistView(Uint8List.fromList(iconBytes))),
-    );
+  final iconLoader = FontLoader(
+    'MaterialIcons',
+  )..addFont(Future.value(ByteData.sublistView(Uint8List.fromList(iconBytes))));
   await iconLoader.load();
 }
 

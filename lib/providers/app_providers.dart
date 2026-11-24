@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/app_repository.dart';
+import '../domain/expectation.dart';
 import '../domain/models.dart';
 
 final repositoryProvider = Provider<AppRepository>((ref) {
@@ -33,6 +34,15 @@ final eventsProvider = Provider<List<ActivationEvent>>((ref) {
   ref.watch(appBootstrapProvider);
   return ref.watch(repositoryProvider).events;
 });
+
+final expectationChecksProvider = Provider<List<ExpectationCheck>>((ref) {
+  ref.watch(dataVersionProvider);
+  ref.watch(appBootstrapProvider);
+  return ref.watch(repositoryProvider).expectationChecks;
+});
+
+/// Hope recorded for the pull currently on screen, if the user chose one.
+final openExpectationCheckIdProvider = StateProvider<String?>((ref) => null);
 
 final summaryProvider = Provider<LogSummary>((ref) {
   ref.watch(dataVersionProvider);

@@ -5,6 +5,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
+import '../domain/expectation.dart';
 import '../domain/free_period.dart';
 import '../domain/models.dart';
 import '../domain/reinforcement.dart';
@@ -15,6 +16,7 @@ import 'seed.dart';
 const _settingsKey = 'app_settings_v1';
 const _responsesFile = 'competing_responses.json';
 const _eventsFile = 'activation_events.json';
+const _checksFile = 'expectation_checks.json';
 
 class AppRepository {
   AppRepository({
@@ -22,8 +24,8 @@ class AppRepository {
     ReinforcementEngine? engine,
     Uuid? uuid,
     this.documentsDirectory,
-  })  : _engine = engine ?? const ReinforcementEngine(),
-        _uuid = uuid ?? const Uuid() {
+  }) : _engine = engine ?? const ReinforcementEngine(),
+       _uuid = uuid ?? const Uuid() {
     _prefsFuture = prefs != null
         ? Future.value(prefs)
         : SharedPreferences.getInstance();
@@ -42,21 +44,21 @@ class AppRepository {
 
   List<CompetingResponse> _responses = [];
   List<ActivationEvent> _events = [];
+  List<ExpectationCheck> _checks = [];
   AppSettings _settings = AppSettings();
   bool _loaded = false;
 
   AppSettings get settings => _settings;
   List<CompetingResponse> get responses => List.unmodifiable(_responses);
   List<ActivationEvent> get events => List.unmodifiable(_events);
+  List<ExpectationCheck> get expectationChecks => List.unmodifiable(_checks);
 
   Future<void> load() async {
     if (_loaded) return;
     final prefs = await _prefsFuture;
     final raw = prefs.getString(_settingsKey);
     if (raw != null) {
-      _settings = AppSettings.fromJson(
-        jsonDecode(raw) as Map<String, dynamic>,
-      );
+      _settings = AppSettings.fromJson(jsonDecode(raw) as Map<String, dynamic>);
     }
 
     final dir = await _docs();
@@ -66,10 +68,11 @@ class AppRepository {
     final isFreshLibrary = !await responsesPath.exists();
     if (!isFreshLibrary) {
       final list = jsonDecode(await responsesPath.readAsString()) as List;
-      _responses = list
-          .map((e) => CompetingResponse.fromJson(e as Map<String, dynamic>))
-          .toList()
-        ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+      _responses =
+          list
+              .map((e) => CompetingResponse.fromJson(e as Map<String, dynamic>))
+              .toList()
+            ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
     } else {
       _responses = defaultCompetingResponses();
       await _persistResponses();
@@ -84,7 +87,8 @@ class AppRepository {
         responseLibraryVersion: currentResponseLibraryVersion,
       );
       await _persistSettings();
-    } else if (_settings.responseLibraryVersion < currentResponseLibraryVersion) {
+    } else if (_settings.responseLibraryVersion <
+        currentResponseLibraryVersion) {
       if (_settings.responseLibraryVersion < 3) {
         await refreshBuiltInResponses();
       } else {
@@ -104,11 +108,14 @@ class AppRepository {
 
     if (await eventsPath.exists()) {
       final list = jsonDecode(await eventsPath.readAsString()) as List;
-      _events = list
-          .map((e) => ActivationEvent.fromJson(e as Map<String, dynamic>))
-          .toList()
-        ..sort((a, b) => b.startedAt.compareTo(a.startedAt));
+      _events =
+          list
+              .map((e) => ActivationEvent.fromJson(e as Map<String, dynamic>))
+              .toList()
+            ..sort((a, b) => b.startedAt.compareTo(a.startedAt));
     }
+
+    await _loadChecks(dir);
 
     // Mark any interrupted in-progress sequence as incomplete.
     if (_settings.pendingSequenceId != null) {
@@ -158,6 +165,100 @@ class AppRepository {
     await file.writeAsString(
       jsonEncode(_events.map((e) => e.toJson()).toList()),
     );
+  }
+
+  Future<void> _loadChecks(Directory dir) async {
+    final file = File('${dir.path}/$_checksFile');
+    if (!await file.exists()) {
+      _checks = [];
+      return;
+    }
+    try {
+      final decoded = jsonDecode(await file.readAsString());
+      if (decoded is! List) return;
+      final parsed = <ExpectationCheck>[];
+      for (final row in decoded) {
+        if (row is! Map) continue;
+        final check = ExpectationCheck.tryFromJson(
+          Map<String, dynamic>.from(row),
+        );
+        if (check != null) parsed.add(check);
+      }
+      parsed.sort((a, b) => b.recordedAt.compareTo(a.recordedAt));
+      _checks = parsed;
+    } catch (_) {
+      _checks = [];
+    }
+  }
+
+  Future<void> _persistChecks() async {
+    final dir = await _docs();
+    final file = File('${dir.path}/$_checksFile');
+    await file.writeAsString(
+      jsonEncode(_checks.map((check) => check.toJson()).toList()),
+    );
+  }
+
+  /// Records a hope for this pull. Any older unasked hope is marked asked
+  /// so a later pull does not stack questions.
+  Future<ExpectationCheck> recordExpectation(ExpectationKind kind) async {
+    _checks = [
+      for (final check in _checks)
+        if (check.needsRatingAsk) check.copyWith(ratingAsked: true) else check,
+    ];
+    final created = ExpectationCheck(
+      id: _uuid.v4(),
+      recordedAt: DateTime.now(),
+      expectation: kind,
+    );
+    _checks.insert(0, created);
+    await _persistChecks();
+    return created;
+  }
+
+  Future<bool> rateExpectation({
+    required String id,
+    required int rating,
+  }) async {
+    if (rating < 1 || rating > 5) return false;
+    final idx = _checks.indexWhere((check) => check.id == id);
+    if (idx < 0) return false;
+    _checks[idx] = _checks[idx].copyWith(
+      rating: rating,
+      ratedAt: DateTime.now(),
+      ratingAsked: true,
+    );
+    await _persistChecks();
+    return true;
+  }
+
+  Future<void> markRatingAsked(String id) async {
+    final idx = _checks.indexWhere((check) => check.id == id);
+    if (idx < 0 || _checks[idx].ratingAsked) return;
+    _checks[idx] = _checks[idx].copyWith(ratingAsked: true);
+    await _persistChecks();
+  }
+
+  Future<void> markNudgeScheduled(String id) async {
+    final idx = _checks.indexWhere((check) => check.id == id);
+    if (idx < 0 || _checks[idx].nudgeScheduled) return;
+    _checks[idx] = _checks[idx].copyWith(nudgeScheduled: true);
+    await _persistChecks();
+  }
+
+  Future<void> attachExpectationToEvent({
+    required String checkId,
+    required String eventId,
+  }) async {
+    final idx = _checks.indexWhere((check) => check.id == checkId);
+    if (idx < 0) return;
+    _checks[idx] = _checks[idx].copyWith(activationEventId: eventId);
+    await _persistChecks();
+  }
+
+  Future<void> clearExpectationHistory() async {
+    _checks = [];
+    await _persistChecks();
   }
 
   Future<void> updateSettings(AppSettings next) async {
@@ -242,13 +343,10 @@ class AppRepository {
   }
 
   /// Starts a sequence: logs activation and returns event + selected response.
-  Future<({ActivationEvent event, CompetingResponse response})> startActivation({
-    required ActivationSource source,
-  }) async {
-    final response = pickWeightedResponse(
-          _responses,
-          excludeId: _settings.lastResponseId,
-        ) ??
+  Future<({ActivationEvent event, CompetingResponse response})>
+  startActivation({required ActivationSource source}) async {
+    final response =
+        pickWeightedResponse(_responses, excludeId: _settings.lastResponseId) ??
         CompetingResponse(
           id: 'fallback',
           phrase: 'Pause. Breathe. You do not need to check right now.',
@@ -392,8 +490,7 @@ class AppRepository {
 
     bool isToday(ActivationEvent e) => !e.startedAt.isBefore(startOfToday);
     bool isWeek(ActivationEvent e) => !e.startedAt.isBefore(startOfWeek);
-    bool success(ActivationEvent e) =>
-        e.outcome == ActivationOutcome.completed;
+    bool success(ActivationEvent e) => e.outcome == ActivationOutcome.completed;
 
     final today = _events.where(isToday).toList();
     final week = _events.where(isWeek).toList();
@@ -440,8 +537,10 @@ class AppRepository {
     );
     _responses = defaultCompetingResponses();
     _events = [];
+    _checks = [];
     await _persistSettings();
     await _persistResponses();
     await _persistEvents();
+    await _persistChecks();
   }
 }
