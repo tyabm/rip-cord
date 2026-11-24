@@ -43,6 +43,13 @@ class _SequenceScreenState extends ConsumerState<SequenceScreen> {
     final repo = ref.read(repositoryProvider);
     await repo.load();
     final result = await repo.startActivation(source: widget.source);
+    final checkId = ref.read(openExpectationCheckIdProvider);
+    if (checkId != null) {
+      await repo.attachExpectationToEvent(
+        checkId: checkId,
+        eventId: result.event.id,
+      );
+    }
     final settings = repo.settings;
     final pattern = breathPatternFor(result.response);
 
@@ -104,10 +111,7 @@ class _SequenceScreenState extends ConsumerState<SequenceScreen> {
     HapticFeedback.mediumImpact();
 
     final repo = ref.read(repositoryProvider);
-    await repo.completeActivation(
-      eventId: _eventId!,
-      durationSec: _elapsed,
-    );
+    await repo.completeActivation(eventId: _eventId!, durationSec: _elapsed);
     ref.read(activeSequenceProvider.notifier).state = null;
     notifyDataChanged(ref);
 
@@ -148,8 +152,9 @@ class _SequenceScreenState extends ConsumerState<SequenceScreen> {
   Widget build(BuildContext context) {
     final settings = ref.watch(settingsProvider);
     final theme = Theme.of(context);
-    final progress =
-        _targetSec == 0 ? 0.0 : (_elapsed / _targetSec).clamp(0.0, 1.0);
+    final progress = _targetSec == 0
+        ? 0.0
+        : (_elapsed / _targetSec).clamp(0.0, 1.0);
     final remaining = (_targetSec - _elapsed).clamp(0, _targetSec);
     final showBreath = _breathPattern != null;
 
@@ -193,9 +198,7 @@ class _SequenceScreenState extends ConsumerState<SequenceScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Icon(
-                              showBreath
-                                  ? Icons.air
-                                  : Icons.directions_run,
+                              showBreath ? Icons.air : Icons.directions_run,
                               color: theme.colorScheme.onSecondaryContainer,
                             ),
                             const SizedBox(width: 12),
@@ -331,10 +334,26 @@ class _SequenceScreenState extends ConsumerState<SequenceScreen> {
     if (settings.grayscaleDuringSequence) {
       return ColorFiltered(
         colorFilter: const ColorFilter.matrix(<double>[
-          0.2126, 0.7152, 0.0722, 0, 0,
-          0.2126, 0.7152, 0.0722, 0, 0,
-          0.2126, 0.7152, 0.0722, 0, 0,
-          0, 0, 0, 1, 0,
+          0.2126,
+          0.7152,
+          0.0722,
+          0,
+          0,
+          0.2126,
+          0.7152,
+          0.0722,
+          0,
+          0,
+          0.2126,
+          0.7152,
+          0.0722,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
         ]),
         child: content,
       );

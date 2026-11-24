@@ -3,11 +3,14 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../domain/expectation.dart';
 import '../../domain/handoff.dart';
 import '../../providers/app_providers.dart';
+import '../../services/expectation_nudge.dart';
 import '../../services/handoff_service.dart';
 import '../common/app_chrome.dart';
 import '../common/check_in_button.dart';
+import '../expectation/outcome_rating.dart';
 
 /// How long the calm acknowledgement stays before Rip-Cord leaves.
 const Duration doneLeaveDelay = Duration(seconds: 4);
@@ -23,11 +26,36 @@ class DoneScreen extends ConsumerStatefulWidget {
 class _DoneScreenState extends ConsumerState<DoneScreen> {
   Timer? _leaveTimer;
   bool _left = false;
+  ExpectationCheck? _unrated;
+  int? _selectedRating;
 
   @override
   void initState() {
     super.initState();
     _leaveTimer = Timer(doneLeaveDelay, _leave);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadUnrated());
+  }
+
+  void _loadUnrated() {
+    if (!mounted) return;
+    final repo = ref.read(repositoryProvider);
+    if (!repo.settings.expectationCheckEnabled) return;
+    final check = closingScreenCheck(repo.expectationChecks);
+    if (check == null) return;
+    setState(() => _unrated = check);
+  }
+
+  Future<void> _rate(int value) async {
+    final check = _unrated;
+    if (check == null || _selectedRating != null || _left) return;
+    _leaveTimer?.cancel();
+    setState(() => _selectedRating = value);
+    final repo = ref.read(repositoryProvider);
+    await repo.rateExpectation(id: check.id, rating: value);
+    await expectationNudge.cancel(check.id);
+    notifyDataChanged(ref);
+    if (!mounted || _left) return;
+    _leaveTimer = Timer(const Duration(seconds: 2), _leave);
   }
 
   @override
@@ -103,6 +131,41 @@ class _DoneScreenState extends ConsumerState<DoneScreen> {
                 textAlign: TextAlign.center,
               ),
               const Spacer(),
+              if (_unrated != null) ...[
+                Text(
+                  expectationFraming,
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: theme.colorScheme.primary,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  outcomeRatingQuestion(_unrated!.expectation),
+                  style: theme.textTheme.bodyMedium?.copyWith(height: 1.35),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+                OutcomeRatingRow(
+                  selected: _selectedRating,
+                  onSelected: _selectedRating == null
+                      ? (value) {
+                          _rate(value);
+                        }
+                      : null,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _selectedRating == null
+                      ? expectationScaleCaption
+                      : 'Saved on this phone.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+              ],
               TrustedCheckInButton(onOpened: _pauseForCheckIn),
               const SizedBox(height: 8),
               FilledButton(

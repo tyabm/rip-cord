@@ -64,6 +64,7 @@ Then put that URL in Play Console → App content → Privacy policy.
 - Data encrypted in transit: N/A if you collect nothing remotely
 - Users can request deletion: yes — uninstall / clear app data
 - Account required: **No**
+- Expectation ratings stay on device. The optional reminder is a local notification (off by default), not data sent off the phone. If you declare the notification permission, it is only for that opt-in reminder.
 
 If the merged APK still has `INTERNET` from plugins, do **not** claim “the app cannot use the network.” Say you do not upload habit data.
 

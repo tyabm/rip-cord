@@ -3,11 +3,10 @@ import 'package:go_router/go_router.dart';
 
 import 'domain/models.dart';
 import 'features/done/done_screen.dart';
-import 'features/drill/drill_screen.dart';
+import 'features/expectation/pull_flow.dart';
 import 'features/home/home_shell.dart';
 import 'features/log/log_screen.dart';
 import 'features/sequence/activation_entry.dart';
-import 'features/sequence/sequence_screen.dart';
 import 'features/settings/settings_screen.dart';
 
 final _rootKey = GlobalKey<NavigatorState>();
@@ -62,14 +61,14 @@ GoRouter createRouter({String? initialLocation}) {
         path: '/prompt',
         name: 'prompt',
         builder: (context, state) {
-          return SequenceScreen(source: _sourceFrom(state));
+          return PullFlow(source: _sourceFrom(state), kind: PullKind.prompt);
         },
       ),
       GoRoute(
         path: '/drill',
         name: 'drill',
         builder: (context, state) {
-          return DrillScreen(source: _sourceFrom(state));
+          return PullFlow(source: _sourceFrom(state), kind: PullKind.drill);
         },
       ),
       GoRoute(
@@ -90,8 +89,13 @@ ActivationSource _sourceFrom(GoRouterState state) {
 /// Parse Android deep link / intent into a router location.
 String? locationFromUri(Uri? uri) {
   if (uri == null) return null;
+  if (uri.scheme == 'ripcord' && uri.host == 'rate') {
+    return '/';
+  }
   if (uri.scheme == 'ripcord' &&
-      (uri.host == 'activate' || uri.path == '/activate' || uri.pathSegments.contains('activate'))) {
+      (uri.host == 'activate' ||
+          uri.path == '/activate' ||
+          uri.pathSegments.contains('activate'))) {
     final source = uri.queryParameters['source'] ?? 'deepLink';
     return '/activate?source=$source';
   }

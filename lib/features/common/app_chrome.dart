@@ -8,17 +8,13 @@ List<Widget> ripCordAppBarActions(BuildContext context) {
       tooltip: 'About',
       onPressed: () => showAboutRipCordDialog(context),
       icon: const Icon(Icons.help_outline),
-      style: IconButton.styleFrom(
-        minimumSize: const Size(48, 48),
-      ),
+      style: IconButton.styleFrom(minimumSize: const Size(48, 48)),
     ),
     IconButton(
       tooltip: 'Exit',
       onPressed: exitRipCordApp,
       icon: const Icon(Icons.close),
-      style: IconButton.styleFrom(
-        minimumSize: const Size(48, 48),
-      ),
+      style: IconButton.styleFrom(minimumSize: const Size(48, 48)),
     ),
   ];
 }
@@ -53,6 +49,13 @@ Future<void> showAboutRipCordDialog(BuildContext context) {
               Text(
                 'When an urge hits: interrupt, do one short competing response, '
                 'then put the phone down. All data stays on this device.',
+                style: TextStyle(height: 1.4),
+              ),
+              SizedBox(height: 12),
+              Text(
+                'You can note what you hoped the habit would get you, then rate '
+                'whether giving in delivered it. See if it was worth it. '
+                'Those notes stay on this phone.',
                 style: TextStyle(height: 1.4),
               ),
               SizedBox(height: 12),

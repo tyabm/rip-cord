@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../providers/app_providers.dart';
 import '../common/app_chrome.dart';
+import '../expectation/pending_outcome_prompt.dart';
 
 class HomeShell extends StatelessWidget {
   const HomeShell({super.key, required this.navigationShell});
@@ -21,7 +22,12 @@ class HomeShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: navigationShell,
+      body: Stack(
+        children: [
+          Positioned.fill(child: navigationShell),
+          const Positioned(top: 0, left: 0, child: PendingOutcomePrompt()),
+        ],
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: navigationShell.currentIndex,
         onDestinationSelected: _goBranch,
@@ -55,12 +61,10 @@ class HomeTab extends ConsumerWidget {
     final bootstrap = ref.watch(appBootstrapProvider);
 
     return bootstrap.when(
-      loading: () => const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      ),
-      error: (e, _) => Scaffold(
-        body: Center(child: Text('Failed to load: $e')),
-      ),
+      loading: () =>
+          const Scaffold(body: Center(child: CircularProgressIndicator())),
+      error: (e, _) =>
+          Scaffold(body: Center(child: Text('Failed to load: $e'))),
       data: (_) {
         final settings = ref.watch(settingsProvider);
         final summary = ref.watch(summaryProvider);
@@ -171,4 +175,3 @@ class HomeTab extends ConsumerWidget {
     );
   }
 }
-
